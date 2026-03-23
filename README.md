@@ -3,8 +3,6 @@
 **Autore:** Dennis Mariani 
 **Corso:** Sistemi Operativi Avanzati (A.A. 2025/2026)  
 
----
-
 ## Descrizione del Progetto
 
 Questo repository contiene l'implementazione di un Modulo Kernel Linux (LKM) progettato per agire come un *Reference Monitor* per le chiamate di sistema (System Call Throttling). 
@@ -47,4 +45,33 @@ Per rimuovere il modulo e pulire l'ambiente:
 
 ```bash
 ./scripts/teardown.sh
+```
+
+---
+
+## Utilizzo e Configurazione (CLI Tool)
+
+L'interazione con il modulo Ring 0 avviene tramite un Character Device generato dinamicamente (`/dev/syscall_defender`) utilizzando la system call `ioctl`. 
+
+È stato sviluppato un tool C dedicato nello User Space (`userspace/cli_tool.c`) per l'amministrazione delle policy di throttling.
+
+**Sicurezza (Effective UID):** Come richiesto dalle specifiche, l'accesso al device e la configurazione delle regole richiedono rigorosamente i privilegi di amministratore. Il modulo verifica le credenziali del chiamante (`current_euid()`). Qualsiasi tentativo di accesso da parte di utenti non privilegiati verrà intercettato e respinto con errore `-EPERM` (Operation not permitted).
+
+Per compilare il pannello di controllo utente:
+
+```bash
+cd userspace
+make
+```
+
+La sintassi del comando richiede privilegi di root e accetta parametri dinamici tramite flag:
+
+```bash
+sudo ./cli_tool -s <syscall_num> -m <max_calls> [-u <uid>] [-p <program>]
+```
+
+**Esempio:** Limitare la system call 2 (sys_open) a un massimo di 10 chiamate al secondo per l'utente con UID 1000:
+
+```bash
+sudo ./cli_tool -s 2 -m 10 -u 1000
 ```
