@@ -1,0 +1,14 @@
+# File di build del Kernel
+*.o
+*.ko
+*.mod.c
+*.mod
+*.symvers
+*.order
+.*.cmd
+.tmp_versions/
+modules.order
+Module.symvers
+
+# Cartella di configurazione di VS Code
+.vscode/
