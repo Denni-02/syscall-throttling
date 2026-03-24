@@ -23,47 +23,7 @@ static int __init core_init(void) {
     ret = init_char_device();
     if (ret < 0) return ret;
 
-    /*
-    // --- TEST DUMMY ---------------------------------------------
-    printk(KERN_INFO "[Syscall_Throttling] Esecuzione Test Dummy Liste...\n");
-    add_rule(1000, "spammer", 2, 5);
-    add_rule(-1, "hacker_tool", 0, 50);
-    debug_print_rules();
-    // ---------------------------
-
-    // --- TEST DUMMY ---------------------------------------------
-    printk(KERN_INFO "[Syscall_Throttling] Esecuzione Test Dummy Spinlock...\n");
-    add_rule(1000, "spammer", 2, 5);
-    
-    result = is_throttled(1000, "un_processo_finto", 2, &max_calls_retrieved);
-    
-    if (result) {
-        printk(KERN_INFO "[Syscall_Throttling] TEST SUPERATO: Trovata regola per UID 1000. MAX è %d\n", max_calls_retrieved);
-    } else {
-        printk(KERN_ERR "[Syscall_Throttling] TEST FALLITO: Regola non trovata!\n");
-    }
-    // ---------------------------
-    */
-
-    // --- TEST DUMMY (RCU) ---
-    printk(KERN_INFO "[Syscall_Throttling] Esecuzione Test Dummy RCU...\n");
-    add_rule(1000, "spammer", 2, 5);
-    
-    // Testiamo l'attraversamento Lock-Free
-    result = is_throttled(1000, "un_processo_finto", 2, &max_calls_retrieved);
-    if (result) {
-        printk(KERN_INFO "[Syscall_Throttling] TEST LETTURA RCU SUPERATO (MAX: %d)\n", max_calls_retrieved);
-    }
-    
-    // Testiamo la cancellazione sicura con Grace Period
-    printk(KERN_INFO "[Syscall_Throttling] Inizio rimozione regola con Grace Period...\n");
-    remove_rule(2); // Cancelliamo la regola sulla syscall 2
-    
-    result = is_throttled(1000, "un_processo_finto", 2, &max_calls_retrieved);
-    if (!result) {
-        printk(KERN_INFO "[Syscall_Throttling] TEST RIMOZIONE RCU SUPERATO: Regola cancellata.\n");
-    }
-    // ---------------------------
+    printk(KERN_INFO "[Syscall_Throttling] Modulo in attesa di comandi dallo User Space.\n");
 
     return 0; // caricamento completato senza errori
 }
@@ -72,10 +32,7 @@ static int __init core_init(void) {
 static void __exit core_exit(void) {
     cleanup_char_device();
 
-    /* Nota: Qui abbiamo attualmente un MEMORY LEAK. 
-     * I nodi allocati nel Test Dummy non vengono liberati con kfree(). 
-     * Risolveremo questo problema architetturale
-     * con la funzione di Garbage Collection. */
+    cleanup_registry();
 
     printk(KERN_INFO "[Syscall_Throttling] Modulo Scaricato con successo.\n");
 }

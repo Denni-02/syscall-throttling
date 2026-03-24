@@ -7,9 +7,6 @@
 #include <linux/rcupdate.h>
 #include "registry_data.h"
 
-// Interruttore: 1 = Spinlock, 0 = RCU
-#define USE_SPINLOCK 0
-
 // Struttura dati per una regola
 struct throttling_rule {
     int uid;
@@ -129,6 +126,30 @@ int remove_rule(int syscall_num) {
     if (!removed) spin_unlock(&registry_lock);
     
     return removed ? 0 : -ENOENT;
+}
+
+// Da chiamare in fase di scaricamento del modulo (rmmod)
+void cleanup_registry(void) {
+    struct throttling_rule *cursor, *tmp;
+    int count = 0;
+    
+    printk(KERN_INFO "[Syscall_Throttling] Avvio Garbage Collection del registro...\n");
+
+    spin_lock(&registry_lock);
+    
+    // list_for_each_entry_safe ci permette di cancellare i nodi mentre iteriamo
+    list_for_each_entry_safe(cursor, tmp, &rules_list, list) {
+        // Disaccoppiamo il nodo
+        list_del(&cursor->list);
+        
+        // Visto che il modulo si sta scaricando e non ci sono più lettori attivi, 
+        // possiamo deallocare direttamente la memoria senza usare synchronize_rcu()
+        kfree(cursor);
+        count++;
+    }
+    
+    spin_unlock(&registry_lock);
+    printk(KERN_INFO "[Syscall_Throttling] Garbage Collection completata. Liberati %d nodi.\n", count);
 }
 
 // Funzione di debug per verificare l'attraversamento

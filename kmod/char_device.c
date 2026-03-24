@@ -3,6 +3,7 @@
 #include <linux/cred.h>   
 #include <linux/sched.h>
 #include "../include/defender_api.h"
+#include "registry_data.h"
 
 #define DEVICE_NAME "syscall_defender"
 
@@ -26,9 +27,14 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
                 return -EFAULT; // Bad address
             }
             
-            // Debug: Stampa a video i dati per confermare l'attraversamento
-            printk(KERN_INFO "[Syscall_Throttling] Ricevuto MAX = %d per UID = %d (Programma: %s, Syscall: %d)\n", 
-                   user_config.max_calls, user_config.target_uid, user_config.comm, user_config.syscall_num);
+            // Inseriamo dinamicamente la regola nel database kernel
+            if (add_rule(user_config.target_uid, user_config.comm, 
+                         user_config.syscall_num, user_config.max_calls) < 0) {
+                return -ENOMEM; // Errore di allocazione RAM
+            }
+            
+            // Debug: Stampiamo la lista per verificare l'inserimento
+            debug_print_rules();
             break;
             
         default:

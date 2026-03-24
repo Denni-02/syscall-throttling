@@ -34,14 +34,20 @@ Per compilare il progetto sono necessari i pacchetti essenziali di build e gli h
 sudo apt update
 sudo apt install build-essential linux-headers-$(uname -r)
 ```
+**Opzioni di Sincronizzazione (RCU vs Spinlock)**: Il motore del database interno (Ring 0) implementa due differenti design pattern per la sincronizzazione multi-core, selezionabili a tempo di compilazione.
 
-Per compilare e iniettare il modulo nel kernel, utilizzare lo script fornito:
+Per compilare e iniettare il modulo utilizzando il design ottimizzato RCU (Read-Copy-Update), che garantisce l'assenza di lock in lettura (Zero Lock Contention) massimizzando le prestazioni del Reference Monitor:
 
 ```bash
 ./scripts/deploy.sh
 ```
+Per compilare e iniettare il modulo utilizzando uno Spinlock Globale per lettori e scrittori :
 
-Per rimuovere il modulo e pulire l'ambiente:
+```bash
+SYNC=spinlock ./scripts/deploy.sh
+```
+
+Per rimuovere il modulo, liberare la memoria (Garbage Collection) e pulire l'ambiente:
 
 ```bash
 ./scripts/teardown.sh
