@@ -26,7 +26,7 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
                 return -EFAULT; // Bad address
             }
             
-            // Test Dummy: Stampa a video i dati per confermare l'attraversamento
+            // Debug: Stampa a video i dati per confermare l'attraversamento
             printk(KERN_INFO "[Syscall_Throttling] Ricevuto MAX = %d per UID = %d (Programma: %s, Syscall: %d)\n", 
                    user_config.max_calls, user_config.target_uid, user_config.comm, user_config.syscall_num);
             break;

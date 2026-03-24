@@ -1,6 +1,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include "registry_data.h"
 
 // Informazioni del modulo
 MODULE_LICENSE("GPL");
@@ -20,12 +21,25 @@ static int __init core_init(void) {
     ret = init_char_device();
     if (ret < 0) return ret;
 
+    // --- TEST DUMMY ---------------------------------------------
+    printk(KERN_INFO "[Syscall_Throttling] Esecuzione Test Dummy Liste...\n");
+    add_rule(1000, "spammer", 2, 5);
+    add_rule(-1, "hacker_tool", 0, 50);
+    debug_print_rules();
+    // ---------------------------
+
     return 0; // caricamento completato senza errori
 }
 
 // Funzione chiamata allo scaricamento del modulo (rmmod)
 static void __exit core_exit(void) {
     cleanup_char_device();
+
+    /* Nota: Qui abbiamo attualmente un MEMORY LEAK. 
+     * I nodi allocati nel Test Dummy non vengono liberati con kfree(). 
+     * Risolveremo questo problema architetturale
+     * con la funzione di Garbage Collection. */
+
     printk(KERN_INFO "[Syscall_Throttling] Modulo Scaricato con successo.\n");
 }
 

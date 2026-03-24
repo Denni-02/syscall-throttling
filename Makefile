@@ -2,7 +2,7 @@
 obj-m += syscall_defender.o
 
 # File sorgenti che compongono il modulo
-syscall_defender-objs := kmod/core_main.o kmod/char_device.o
+syscall_defender-objs := kmod/core_main.o kmod/char_device.o kmod/registry_data.o
 
 # Variabili d'ambiente
 KDIR := /lib/modules/$(shell uname -r)/build
