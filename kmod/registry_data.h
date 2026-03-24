@@ -6,6 +6,7 @@
 
 // Prototipi delle funzioni esposte dal registry
 int add_rule(int uid, const char *comm, int syscall_num, int max_calls);
+int remove_rule(int syscall_num);
 void debug_print_rules(void); // Per il Test Dummy
 
 // Funzione che la syscall intercettata chiamerà per sapere se deve bloccarsi o meno

@@ -3,10 +3,12 @@
 #include <linux/list.h>
 #include <linux/string.h>
 #include <linux/spinlock.h>
+#include <linux/rculist.h>  
+#include <linux/rcupdate.h>
 #include "registry_data.h"
 
 // Interruttore: 1 = Spinlock, 0 = RCU
-#define USE_SPINLOCK 1
+#define USE_SPINLOCK 0
 
 // Struttura dati per una regola
 struct throttling_rule {
@@ -20,9 +22,7 @@ struct throttling_rule {
 // Inizializzazione della lista delle regole
 static LIST_HEAD(rules_list);
 
-#if USE_SPINLOCK
-    DEFINE_SPINLOCK(registry_lock);
-#endif
+DEFINE_SPINLOCK(registry_lock);
 
 // Funzione per aggiungere una regola alla lista
 int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
@@ -47,15 +47,16 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
         new_rule->comm[0] = '\0';
     }
 
-#if USE_SPINLOCK
+    // --- INIZIO SEZIONE SCRITTURA ---
     spin_lock(&registry_lock);
-#endif
-    // -- INIZIO SEZIONE CRITICA (Aggiunta nuova regola alla lista) --
-    list_add_tail(&new_rule->list, &rules_list);
-    // -- FINE SEZIONE CRITICA --
 #if USE_SPINLOCK
-    spin_unlock(&registry_lock);
+    list_add_tail(&new_rule->list, &rules_list);
+#else
+    // Pubblica il nodo in modo sicuro per i lettori RCU concorrenti
+    list_add_tail_rcu(&new_rule->list, &rules_list);
 #endif
+    spin_unlock(&registry_lock);
+    // --- FINE SEZIONE SCRITTURA ---
 
     printk(KERN_INFO "[Syscall_Throttling] Regola salvata in RAM: Syscall %d, MAX %d\n", 
            syscall_num, max_calls);
@@ -69,20 +70,18 @@ int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls)
 
 #if USE_SPINLOCK
     spin_lock(&registry_lock);
-#endif
-    // -- INIZIO SEZIONE CRITICA (Lettura regole)
     list_for_each_entry(cursor, &rules_list, list) {
-        // Verifica corrispondenza syscall (o -1 per intercettarle tutte)
+#else
+    // Disabilita la preemption, indica l'inizio della lettura RCU. ZERO Lock.
+    rcu_read_lock(); 
+    list_for_each_entry_rcu(cursor, &rules_list, list) {
+#endif
         if (cursor->syscall_num == syscall_num || cursor->syscall_num == -1) {
-            
-            // Verifica corrispondenza UID
             if (cursor->uid != -1 && cursor->uid == uid) {
                 *out_max_calls = cursor->max_calls;
                 found = 1;
                 break;
             }
-            
-            // Verifica corrispondenza Nome Programma
             if (strlen(cursor->comm) > 0 && strncmp(cursor->comm, comm, MAX_COMM_LEN) == 0) {
                 *out_max_calls = cursor->max_calls;
                 found = 1;
@@ -90,12 +89,46 @@ int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls)
             }
         }
     }
-    // -- FINE SEZIONE CRITICA --
 #if USE_SPINLOCK
     spin_unlock(&registry_lock);
+#else
+    rcu_read_unlock(); // Fine lettura RCU
 #endif
-    
+
     return found;
+}
+
+// Funzione critica per illustrare il Grace Period
+int remove_rule(int syscall_num) {
+    struct throttling_rule *cursor, *tmp;
+    int removed = 0;
+
+    spin_lock(&registry_lock); // Blocca altri scrittori
+    list_for_each_entry_safe(cursor, tmp, &rules_list, list) {
+        if (cursor->syscall_num == syscall_num) {
+#if USE_SPINLOCK
+            list_del(&cursor->list);
+            spin_unlock(&registry_lock);
+            kfree(cursor); // Niente RCU, possiamo deallocare subito
+#else
+            // Sgancia il nodo dalla lista (Invisibile ai NUOVI lettori)
+            list_del_rcu(&cursor->list);
+            spin_unlock(&registry_lock);
+            
+            // GRACE PERIOD: Blocca questo thread finché i VECCHI lettori
+            // che stanno ancora analizzando 'cursor' non chiamano rcu_read_unlock()
+            synchronize_rcu();
+            
+            // Ora è matematicamente sicuro deallocare la memoria
+            kfree(cursor);
+#endif
+            removed = 1;
+            break;
+        }
+    }
+    if (!removed) spin_unlock(&registry_lock);
+    
+    return removed ? 0 : -ENOENT;
 }
 
 // Funzione di debug per verificare l'attraversamento
@@ -106,12 +139,18 @@ void debug_print_rules(void) {
     
 #if USE_SPINLOCK
     spin_lock(&registry_lock);
-#endif
     list_for_each_entry(cursor, &rules_list, list) {
+#else
+    rcu_read_lock();
+    list_for_each_entry_rcu(cursor, &rules_list, list) {
+#endif
         printk(KERN_INFO "[Syscall_Throttling] Regola -> UID: %d, Comm: '%s', Syscall: %d, MAX: %d\n",
                cursor->uid, cursor->comm, cursor->syscall_num, cursor->max_calls);
     }
+
 #if USE_SPINLOCK
     spin_unlock(&registry_lock);
+#else
+    rcu_read_unlock();
 #endif
 }
