@@ -8,4 +8,7 @@
 int add_rule(int uid, const char *comm, int syscall_num, int max_calls);
 void debug_print_rules(void); // Per il Test Dummy
 
+// Funzione che la syscall intercettata chiamerà per sapere se deve bloccarsi o meno
+int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls);
+
 #endif // REGISTRY_DATA_H
