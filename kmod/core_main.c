@@ -1,9 +1,15 @@
+/**
+ * Entry point del Modulo Kernel. 
+ * Contiene le macro e le routine principali di inizializzazione (insmod) 
+ * e di deallocazione sicura e pulizia (rmmod).
+*/
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include "registry_data.h"
 
-// Informazioni del modulo
+// Metadati del modulo
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Dennis/0365494");
 MODULE_DESCRIPTION("Syscall Throttling LKM - Advanced Operating Systems");
@@ -13,11 +19,12 @@ MODULE_VERSION("0.1");
 extern int init_char_device(void);
 extern void cleanup_char_device(void);
 
-// Funzione chiamata al caricamento del modulo (insmod)
+/**
+ * core_init() - Entry point eseguito al caricamento del modulo (insmod).
+ * Return: 0 in caso di successo, codice di errore negativo in caso di fault.
+ */
 static int __init core_init(void) {
     int ret;
-    int max_calls_retrieved = 0;
-    int result;
     printk(KERN_INFO "[Syscall_Throttling] Modulo Caricato con successo.\n");
 
     ret = init_char_device();
@@ -28,7 +35,9 @@ static int __init core_init(void) {
     return 0; // caricamento completato senza errori
 }
 
-// Funzione chiamata allo scaricamento del modulo (rmmod)
+/**
+ * core_exit() - Routine di cleanup eseguita allo scaricamento (rmmod).
+ */
 static void __exit core_exit(void) {
     cleanup_char_device();
 

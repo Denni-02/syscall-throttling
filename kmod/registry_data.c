@@ -1,3 +1,9 @@
+/**
+ * Motore del database interno al kernel. 
+ * Gestisce l'allocazione della memoria Ring 0, la memorizzazione delle regole 
+ * e la sincronizzazione multi-core (RCU o Spinlock Globale).
+*/
+
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/list.h>
@@ -7,7 +13,14 @@
 #include <linux/rcupdate.h>
 #include "registry_data.h"
 
-// Struttura dati per una regola
+/**
+ * struct throttling_rule - Nodo della lista per le regole
+ * @uid:         User ID da monitorare (-1 indica nessun filtro sull'utente)
+ * @comm:        Nome del task da limitare (stringa vuota indica nessun filtro)
+ * @syscall_num: Numero della system call bersaglio
+ * @max_calls:   Soglia massima di chiamate permesse
+ * @list:        Struttura kernel standard per l'ancoraggio alla doubly-linked list
+ */
 struct throttling_rule {
     int uid;
     char comm[MAX_COMM_LEN];
@@ -19,9 +32,10 @@ struct throttling_rule {
 // Inizializzazione della lista delle regole
 static LIST_HEAD(rules_list);
 
+// Lock globale utilizzato per serializzare gli Scrittori
 DEFINE_SPINLOCK(registry_lock);
 
-// Funzione per aggiungere una regola alla lista
+// Alloca e inserisce una nuova regola alla lista
 int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
     struct throttling_rule *new_rule;
 
@@ -44,7 +58,7 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
         new_rule->comm[0] = '\0';
     }
 
-    // --- INIZIO SEZIONE SCRITTURA ---
+    /* --- INIZIO SEZIONE CRITICA (Scrittore) --- */
     spin_lock(&registry_lock);
 #if USE_SPINLOCK
     list_add_tail(&new_rule->list, &rules_list);
@@ -53,7 +67,7 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
     list_add_tail_rcu(&new_rule->list, &rules_list);
 #endif
     spin_unlock(&registry_lock);
-    // --- FINE SEZIONE SCRITTURA ---
+    /* --- FINE SEZIONE CRITICA --- */
 
     printk(KERN_INFO "[Syscall_Throttling] Regola salvata in RAM: Syscall %d, MAX %d\n", 
            syscall_num, max_calls);
@@ -61,6 +75,40 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
     return 0;
 }
 
+// Rimuove in modo sicuro una regola
+int remove_rule(int syscall_num) {
+    struct throttling_rule *cursor, *tmp;
+    int removed = 0;
+
+    spin_lock(&registry_lock); // Blocca altri scrittori
+    list_for_each_entry_safe(cursor, tmp, &rules_list, list) {
+        if (cursor->syscall_num == syscall_num) {
+#if USE_SPINLOCK
+            list_del(&cursor->list);
+            spin_unlock(&registry_lock);
+            kfree(cursor); // Niente RCU, possiamo deallocare subito
+#else
+            // Sgancia il nodo dalla lista (Invisibile ai NUOVI lettori)
+            list_del_rcu(&cursor->list);
+            spin_unlock(&registry_lock);
+            
+            // GRACE PERIOD: Blocca questo thread finché i VECCHI lettori
+            // che stanno ancora analizzando 'cursor' non chiamano rcu_read_unlock()
+            synchronize_rcu();
+            
+            // Ora è sicuro deallocare la memoria
+            kfree(cursor);
+#endif
+            removed = 1;
+            break;
+        }
+    }
+    if (!removed) spin_unlock(&registry_lock);
+    
+    return removed ? 0 : -ENOENT;
+}
+
+// Determina se l'esecuzione corrente viola le policy
 int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls) {
     struct throttling_rule *cursor;
     int found = 0;
@@ -69,7 +117,7 @@ int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls)
     spin_lock(&registry_lock);
     list_for_each_entry(cursor, &rules_list, list) {
 #else
-    // Disabilita la preemption, indica l'inizio della lettura RCU. ZERO Lock.
+    // Disabilita la preemption, indica l'inizio della lettura RCU
     rcu_read_lock(); 
     list_for_each_entry_rcu(cursor, &rules_list, list) {
 #endif
@@ -95,40 +143,7 @@ int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls)
     return found;
 }
 
-// Funzione critica per illustrare il Grace Period
-int remove_rule(int syscall_num) {
-    struct throttling_rule *cursor, *tmp;
-    int removed = 0;
-
-    spin_lock(&registry_lock); // Blocca altri scrittori
-    list_for_each_entry_safe(cursor, tmp, &rules_list, list) {
-        if (cursor->syscall_num == syscall_num) {
-#if USE_SPINLOCK
-            list_del(&cursor->list);
-            spin_unlock(&registry_lock);
-            kfree(cursor); // Niente RCU, possiamo deallocare subito
-#else
-            // Sgancia il nodo dalla lista (Invisibile ai NUOVI lettori)
-            list_del_rcu(&cursor->list);
-            spin_unlock(&registry_lock);
-            
-            // GRACE PERIOD: Blocca questo thread finché i VECCHI lettori
-            // che stanno ancora analizzando 'cursor' non chiamano rcu_read_unlock()
-            synchronize_rcu();
-            
-            // Ora è matematicamente sicuro deallocare la memoria
-            kfree(cursor);
-#endif
-            removed = 1;
-            break;
-        }
-    }
-    if (!removed) spin_unlock(&registry_lock);
-    
-    return removed ? 0 : -ENOENT;
-}
-
-// Da chiamare in fase di scaricamento del modulo (rmmod)
+// Deallocazione in fase di scaricamento del modulo (rmmod)
 void cleanup_registry(void) {
     struct throttling_rule *cursor, *tmp;
     int count = 0;
@@ -142,7 +157,7 @@ void cleanup_registry(void) {
         // Disaccoppiamo il nodo
         list_del(&cursor->list);
         
-        // Visto che il modulo si sta scaricando e non ci sono più lettori attivi, 
+        // Grazie al Reference Counting del Kernel è garantito che non ci sono più lettori attivi, 
         // possiamo deallocare direttamente la memoria senza usare synchronize_rcu()
         kfree(cursor);
         count++;

@@ -1,3 +1,9 @@
+/**
+ * Tool a riga di comando (CLI) in User Space. 
+ * Esegue il parsing degli argomenti (getopt), formatta il payload 
+ * e invia le regole di throttling al modulo kernel tramite IOCTL.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -8,7 +14,13 @@
 
 #define DEVICE_PATH "/dev/syscall_defender"
 
-// Funzione di aiuto per mostrare come si usa il comando
+/**
+ * print_usage() - Mostra l'interfaccia a riga di comando (CLI)
+ * @prog_name: Il nome dell'eseguibile invocato (argv[0])
+ *
+ * Fornisce un feedback immediato all'utente in caso di sintassi errata,
+ * documentando i flag supportati dal tool.
+ */
 void print_usage(const char *prog_name) {
     printf("Syscall Throttling - Pannello di Controllo\n");
     printf("Uso: %s -s <syscall_num> -m <max_calls> [-u <uid>] [-p <program>]\n", prog_name);
@@ -20,6 +32,12 @@ void print_usage(const char *prog_name) {
     printf("  -p    Nome del programma target (max %d char)\n", MAX_COMM_LEN - 1);
 }
 
+/**
+ * main() - Entry point dello User Space Application
+ * Esegue il parsing degli argomenti, popola la struttura
+ * dati di configurazione e la trasmette al Character Device 
+ * del kernel mediante la system call ioctl().
+ */
 int main(int argc, char *argv[]) {
     int fd;
     int opt;
@@ -88,6 +106,8 @@ int main(int argc, char *argv[]) {
     }
 
     printf("[CLI] Regola configurata con successo!\n");
+
+    // Chiusura del file descriptor
     close(fd);
     return EXIT_SUCCESS;
 }
