@@ -3,6 +3,18 @@
 **Autore:** Dennis Mariani 
 **Corso:** Sistemi Operativi Avanzati (A.A. 2025/2026)  
 
+---
+
+## Indice
+- [Descrizione del Progetto](#descrizione-del-progetto)
+- [Architettura del Sottosistema](#architettura-del-sottosistema)
+- [Struttura del Repository](#struttura-del-repository)
+- [Modalità di Compilazione e Design Pattern](#modalità-di-compilazione-e-design-pattern)
+- [Deploy e Teardown](#deploy-e-teardown)
+- [Utilizzo e Configurazione (CLI Tool)](#utilizzo-e-configurazione-cli-tool)
+
+---
+
 ## Descrizione del Progetto
 
 Questo repository contiene l'implementazione di un Modulo Kernel Linux (LKM) progettato per agire come un *Reference Monitor* per le chiamate di sistema (System Call Throttling). 
@@ -13,7 +25,11 @@ Il modulo permette di intercettare e limitare dinamicamente la frequenza di invo
 
 Se il volume di chiamate supera una soglia massima (MAX) configurabile, all'interno di una finestra temporale di 1 secondo, i thread invocanti vengono temporaneamente sospesi (throttling) per mitigare abusi o comportamenti anomali, garantendo al contempo le prestazioni e la stabilità del sistema operativo.
 
----
+## Architettura del Sottosistema
+
+Il progetto è diviso in:
+- **Kernel Space (Ring 0):** Il motore principale. Implementa l'hooking della `sys_call_table` disabilitando le protezioni hardware (bit WP del registro CR0). 
+- **User Space (Ring 3):** Un tool di amministrazione CLI che comunica con il kernel tramite un Character Device (`/dev/syscall_defender`) sfruttando comandi `ioctl` per l'inserimento o la rimozione delle policy a runtime.
 
 ## Struttura del Repository
 
