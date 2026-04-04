@@ -18,7 +18,8 @@
  * @uid:         User ID da monitorare (-1 indica nessun filtro sull'utente)
  * @comm:        Nome del task da limitare (stringa vuota indica nessun filtro)
  * @syscall_num: Numero della system call bersaglio
- * @max_calls:   Soglia massima di chiamate permesse
+ * @max_calls:   Soglia massima di chiamate permesse in 1 secondo
+ * @current_calls: Contatore atomico thread-safe delle invocazioni correnti
  * @list:        Struttura kernel standard per l'ancoraggio alla doubly-linked list
 */
 struct throttling_rule {
@@ -26,6 +27,7 @@ struct throttling_rule {
     char comm[MAX_COMM_LEN];
     int syscall_num;
     int max_calls;
+    atomic_t current_calls;
     struct list_head list; 
 };
 
@@ -51,6 +53,7 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
     new_rule->uid = uid;
     new_rule->syscall_num = syscall_num;
     new_rule->max_calls = max_calls;
+    atomic_set(&new_rule->current_calls, 0);
     if (comm != NULL) {
         strncpy(new_rule->comm, comm, MAX_COMM_LEN - 1);
         new_rule->comm[MAX_COMM_LEN - 1] = '\0'; 
@@ -108,10 +111,10 @@ int remove_rule(int syscall_num) {
     return removed ? 0 : -ENOENT;
 }
 
-// Determina se l'esecuzione corrente viola le policy
 int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls) {
     struct throttling_rule *cursor;
-    int found = 0;
+    int should_block = 0; // 0 = Lascia passare, 1 = Congela il thread
+    int current_count = 0;
 
 #if USE_SPINLOCK
     spin_lock(&registry_lock);
@@ -122,15 +125,19 @@ int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls)
     list_for_each_entry_rcu(cursor, &rules_list, list) {
 #endif
         if (cursor->syscall_num == syscall_num || cursor->syscall_num == -1) {
-            if (cursor->uid != -1 && cursor->uid == uid) {
+            if ((cursor->uid != -1 && cursor->uid == uid) || 
+                (strlen(cursor->comm) > 0 && strncmp(cursor->comm, comm, MAX_COMM_LEN) == 0)) {
+                
                 *out_max_calls = cursor->max_calls;
-                found = 1;
-                break;
-            }
-            if (strlen(cursor->comm) > 0 && strncmp(cursor->comm, comm, MAX_COMM_LEN) == 0) {
-                *out_max_calls = cursor->max_calls;
-                found = 1;
-                break;
+                
+                // Incrementiamo il contatore e leggiamo il nuovo valore in modo atomico
+                current_count = atomic_inc_return(&cursor->current_calls);
+                
+                // Se il contatore supera il limite, alziamo il flag di blocco
+                if (current_count > cursor->max_calls) {
+                    should_block = 1;
+                }
+                break; // Trovata la regola, usciamo dal ciclo 
             }
         }
     }
@@ -140,7 +147,8 @@ int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls)
     rcu_read_unlock(); // Fine lettura RCU
 #endif
 
-    return found;
+    return should_block;
+
 }
 
 // Deallocazione in fase di scaricamento del modulo (rmmod)
@@ -187,6 +195,26 @@ void debug_print_rules(void) {
 #if USE_SPINLOCK
     spin_unlock(&registry_lock);
 #else
+    rcu_read_unlock();
+#endif
+}
+
+// Resetta tutti i contatori atomici per la nuova finestra temporale
+void reset_all_counters(void) {
+    struct throttling_rule *cursor;
+
+    // Usiamo la lettura lock-free o lo spinlock in base al Makefile
+#if USE_SPINLOCK
+    spin_lock(&registry_lock);
+    list_for_each_entry(cursor, &rules_list, list) {
+        atomic_set(&cursor->current_calls, 0);
+    }
+    spin_unlock(&registry_lock);
+#else
+    rcu_read_lock();
+    list_for_each_entry_rcu(cursor, &rules_list, list) {
+        atomic_set(&cursor->current_calls, 0);
+    }
     rcu_read_unlock();
 #endif
 }

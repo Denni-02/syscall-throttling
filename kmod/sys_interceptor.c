@@ -11,6 +11,7 @@
 #include <linux/kprobes.h>
 #include <linux/version.h>
 #include "sys_interceptor.h"
+#include "policy_engine.h"
 
 // Puntatore globale che ospiterà l'indirizzo della tabella trovata 
 unsigned long **sys_call_table_ptr = NULL;
@@ -18,10 +19,29 @@ unsigned long **sys_call_table_ptr = NULL;
 // Puntatore per salvare la syscall originale e ripristinarla allo scaricamento
 unsigned long *original_ni_syscall = NULL;
 
-// TEST: system call fittizia
+/* ========================================================================= *
+ * IL REFERENCE MONITOR (TRAMPOLINO DI PASS-THROUGH)                         *
+ * ========================================================================= */
+
+/* Definiamo il tipo di puntatore a funzione per le syscall moderne (che usano pt_regs) */
+typedef asmlinkage long (*syscall_wrapper_t)(const struct pt_regs *regs);
+
 asmlinkage long my_dummy_syscall(const struct pt_regs *regs) {
-    printk(KERN_INFO "[Syscall_Throttling] HOOK ESEGUITO! La System Call 134 è stata invocata e dirottata.\n");
-    return 0; // Ritorna 0 (Successo) allo User Space 
+    syscall_wrapper_t original_sys_call;
+
+    /* 1. Applichiamo la policy di Throttling 
+     * (Passiamo 134 hardcodato per ora, ma lo renderemo dinamico a breve) 
+     */
+    enforce_syscall_policy(134);
+
+    /* 2. Recuperiamo il puntatore alla syscall originale che avevamo salvato in Fase 3 */
+    original_sys_call = (syscall_wrapper_t)original_ni_syscall;
+
+    /* 3. Esecuzione Reale (Pass-Through): 
+     * Lasciamo che il kernel esegua la vera operazione richiesta dallo User Space
+     * e restituiamo il suo esito originale, in modo che l'utente non si accorga di nulla.
+     */
+    return original_sys_call(regs);
 }
 
 /* ========================================================================= *

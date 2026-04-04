@@ -9,6 +9,7 @@
 #include <linux/init.h>
 #include "registry_data.h"
 #include "sys_interceptor.h"
+#include "policy_engine.h"
 
 // Metadati del modulo
 MODULE_LICENSE("GPL");
@@ -37,6 +38,15 @@ static int __init core_init(void) {
         return ret;
     }
 
+    // Avvio del demone di sistema (Kthread) per il throttling
+    ret = start_policy_engine();
+    if (ret < 0) {
+        // Rollback a cascata
+        cleanup_interceptor(); 
+        cleanup_char_device();
+        return ret;
+    }
+
     printk(KERN_INFO "[Syscall_Throttling] Modulo in attesa di comandi dallo User Space.\n");
 
     return 0; // Caricamento completato senza errori
@@ -46,6 +56,8 @@ static int __init core_init(void) {
  * core_exit() - Routine di cleanup eseguita allo scaricamento (rmmod).
 */
 static void __exit core_exit(void) {
+
+    stop_policy_engine();
     cleanup_interceptor();
     cleanup_char_device();
     cleanup_registry();

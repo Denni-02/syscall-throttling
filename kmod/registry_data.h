@@ -34,23 +34,35 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls);
 int remove_rule(int syscall_num);
 
 /**
- * is_throttled() - Valuta se la syscall è monitorata
+ * is_throttled() - Esegue il conteggio e valuta la policy di blocco
  * @uid:           UID del processo chiamante (current_uid)
  * @comm:          Nome del processo chiamante (current->comm)
  * @syscall_num:   Numero della system call intercettata
  * @out_max_calls: Puntatore per restituire per riferimento il limite MAX
  *
- * Attraversa la lista delle regole attive. 
- * Return: 1 se il processo corrisponde a una regola, 0 altrimenti.
- */
+ * Attraversa il database in RAM. Se trova una regola corrispondente, 
+ * incrementa in modo atomico (lock-free) il contatore delle chiamate.
+ * 
+ * Return: 1 se il limite MAX è stato superato (il thread DEVE essere sospeso), 
+ * 0 se il processo può procedere (nessuna regola trovata, o limite non superato).
+*/
 int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls);
 
 /**
  * cleanup_registry() - Garbage Collection per lo scaricamento del modulo
  * Da invocare esclusivamente all'interno della module_exit. Svuota la lista 
  * e chiama kfree() su tutti i nodi allocati per prevenire Memory Leak. 
- */
+*/
 void cleanup_registry(void);
+
+/**
+ * reset_all_counters() - Azzeramento asincrono per la nuova finestra temporale
+ *
+ * Viene invocata periodicamente dal demone di sistema (Kthread). Attraversa
+ * il database e resetta a zero il contatore atomico `current_calls` di tutte
+ * le regole attive, permettendo ai thread di riprendere le invocazioni.
+*/
+void reset_all_counters(void);
 
 void debug_print_rules(void); // Utility di stampa
 

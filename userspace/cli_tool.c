@@ -20,7 +20,7 @@
  *
  * Fornisce un feedback immediato all'utente in caso di sintassi errata,
  * documentando i flag supportati dal tool.
- */
+*/
 void print_usage(const char *prog_name) {
     printf("Syscall Throttling - Pannello di Controllo\n");
     printf("Uso: %s -s <syscall_num> -m <max_calls> [-u <uid>] [-p <program>]\n", prog_name);
@@ -37,7 +37,7 @@ void print_usage(const char *prog_name) {
  * Esegue il parsing degli argomenti, popola la struttura
  * dati di configurazione e la trasmette al Character Device 
  * del kernel mediante la system call ioctl().
- */
+*/
 int main(int argc, char *argv[]) {
     int fd;
     int opt;
