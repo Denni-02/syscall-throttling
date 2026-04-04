@@ -5,7 +5,7 @@
  * 
  * La logica è stata estratta e riadattata a partire dal codice fornito 
  * nel materiale didattico del corso (autore: Prof. Francesco Quaglia).
- */
+*/
 
 #include <linux/kernel.h>
 #include <linux/mm.h>
@@ -54,7 +54,7 @@ static inline unsigned long _read_cr3(void) {
 /**
  * sys_vtpmo() - Traduce un indirizzo virtuale esplorando la MMU.
  * Verifica che ogni livello dell'albero sia allocato in RAM fisica (bit VALID).
- */
+*/
 static int sys_vtpmo(unsigned long vaddr) {
     pud_t *pdp;
     pmd_t *pde;
@@ -81,7 +81,7 @@ static int sys_vtpmo(unsigned long vaddr) {
         return NO_MAP;
     }
 
-    // Controllo per le Huge Pages (2MB). Il kernel ci risiede spesso. 
+    // Controllo per le Huge Pages (2MB)
     if (pmd_val(pde[PDE(vaddr)]) & LH_MAPPING) {
         frame_addr = pmd_val(pde[PDE(vaddr)]) & PT_ADDRESS_MASK;
         return (frame_addr >> 12); /* Ritorna il frame number */
@@ -103,7 +103,7 @@ static int sys_vtpmo(unsigned long vaddr) {
  * good_area() - Controllo euristico sui falsi positivi.
  * Verifica che gli indici precedenti alla prima sys_ni_syscall non 
  * contengano tutti lo stesso puntatore.
- */
+*/
 static int good_area(unsigned long *addr) {
     int i;
     for(i = 1; i < FIRST_NI_SYSCALL; i++) {
@@ -118,7 +118,7 @@ bad_area:
  * validate_page() - Cerca la firma della sys_call_table in una singola pagina.
  * Cerca il pattern ripetuto degli indici sys_ni_syscall.
  * Return: L'indirizzo esadecimale della tabella, o 0 se non trovata.
- */
+*/
 static unsigned long validate_page(unsigned long page) {
     int i = 0;
     unsigned long new_page = page;
@@ -149,7 +149,7 @@ static unsigned long validate_page(unsigned long page) {
              (addr[FIRST_NI_SYSCALL] == addr[SEVENTH_NI_SYSCALL]) &&
              good_area(addr) ) 
         {
-            // Tabella trovata! Restituiamo direttamente l'indirizzo pulito 
+            // Tabella trovata! Restituiamo direttamente l'indirizzo 
             return (unsigned long)addr;
         }
     }
@@ -160,7 +160,7 @@ static unsigned long validate_page(unsigned long page) {
  * scan_for_syscall_table() - Entry point della libreria (ex syscall_table_finder).
  * Attraversa la memoria virtuale e chiama il validatore.
  * Return: L'indirizzo esadecimale, o 0 in caso di fallimento totale.
- */
+*/
 unsigned long scan_for_syscall_table(void) {
     unsigned long k;
     unsigned long found_addr = 0;

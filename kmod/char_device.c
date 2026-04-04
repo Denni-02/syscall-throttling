@@ -25,7 +25,7 @@ static int major_number;
  * e trasferisce in modo sicuro le strutture dati da Ring 3 a Ring 0.
  *
  * Return: 0 in caso di successo, un codice di errore negativo in caso di violazione o fallimento.
- */
+*/
 static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long arg) {
     
     struct config_data user_config;
@@ -62,7 +62,7 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 
 /**
  * struct fops - Mappatura delle operazioni supportate dal Character Device.
- */
+*/
 static struct file_operations fops = {
     .owner = THIS_MODULE,
     .unlocked_ioctl = defender_ioctl,
@@ -75,7 +75,7 @@ static struct file_operations fops = {
  * file_operations nel VFS. 
  *
  * Return: 0 in caso di successo, errore negativo se il kernel rifiuta la registrazione.
- */
+*/
 int init_char_device(void) {
     major_number = register_chrdev(0, DEVICE_NAME, &fops);
     if (major_number < 0) {
@@ -91,7 +91,7 @@ int init_char_device(void) {
  *
  * Libera il Major Number, rendendo impossibile per i processi in User Space
  * effettuare nuove chiamate ioctl() verso questo modulo.
- */
+*/
 void cleanup_char_device(void) {
     unregister_chrdev(major_number, DEVICE_NAME);
     printk(KERN_INFO "[Syscall_Throttling] Device deregistrato.\n");

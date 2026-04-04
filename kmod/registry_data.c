@@ -20,7 +20,7 @@
  * @syscall_num: Numero della system call bersaglio
  * @max_calls:   Soglia massima di chiamate permesse
  * @list:        Struttura kernel standard per l'ancoraggio alla doubly-linked list
- */
+*/
 struct throttling_rule {
     int uid;
     char comm[MAX_COMM_LEN];

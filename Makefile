@@ -2,7 +2,7 @@
 obj-m += syscall_defender.o
 
 # File sorgenti che compongono il modulo
-syscall_defender-objs := kmod/core_main.o kmod/char_device.o kmod/registry_data.o kmod/sys_interceptor.o kmod/mmu_scanner.o
+syscall_defender-objs := kmod/core_main.o kmod/char_device.o kmod/registry_data.o kmod/sys_interceptor.o kmod/mmu_scanner.o kmod/kprobes_discovery.o
 
 # --- Flag Architetturali Sincronizzazione ---
 

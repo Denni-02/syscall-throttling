@@ -23,7 +23,7 @@ extern void cleanup_char_device(void);
 /**
  * core_init() - Entry point eseguito al caricamento del modulo (insmod).
  * Return: 0 in caso di successo, codice di errore negativo in caso di fault.
- */
+*/
 static int __init core_init(void) {
     int ret;
     printk(KERN_INFO "[Syscall_Throttling] Modulo Caricato con successo.\n");
@@ -39,12 +39,12 @@ static int __init core_init(void) {
 
     printk(KERN_INFO "[Syscall_Throttling] Modulo in attesa di comandi dallo User Space.\n");
 
-    return 0; // caricamento completato senza errori
+    return 0; // Caricamento completato senza errori
 }
 
 /**
  * core_exit() - Routine di cleanup eseguita allo scaricamento (rmmod).
- */
+*/
 static void __exit core_exit(void) {
     cleanup_interceptor();
     cleanup_char_device();
