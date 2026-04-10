@@ -12,6 +12,7 @@
 #include <linux/rculist.h>  
 #include <linux/rcupdate.h>
 #include "registry_data.h"
+#include "sys_interceptor.h"
 
 /**
  * struct throttling_rule - Nodo della lista per le regole
@@ -74,6 +75,10 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
 
     printk(KERN_INFO "[Syscall_Throttling] Regola salvata in RAM: Syscall %d, MAX %d\n", 
            syscall_num, max_calls);
+
+    if (hook_specific_syscall(syscall_num) < 0) { // Agganciamo l'hook
+        printk(KERN_ERR "[Syscall_Throttling] Errore nell'hooking dinamico della syscall %d\n", syscall_num);
+    }
            
     return 0;
 }
@@ -89,12 +94,15 @@ int remove_rule(int syscall_num) {
 #if USE_SPINLOCK
             list_del(&cursor->list);
             spin_unlock(&registry_lock);
+            unhook_specific_syscall(syscall_num); // Rimuovi hook
             kfree(cursor); // Niente RCU, possiamo deallocare subito
 #else
             // Sgancia il nodo dalla lista (Invisibile ai NUOVI lettori)
             list_del_rcu(&cursor->list);
             spin_unlock(&registry_lock);
-            
+
+            unhook_specific_syscall(syscall_num); // Rimuovi hook
+
             // GRACE PERIOD: Blocca questo thread finché i VECCHI lettori
             // che stanno ancora analizzando 'cursor' non chiamano rcu_read_unlock()
             synchronize_rcu();
@@ -164,6 +172,8 @@ void cleanup_registry(void) {
     list_for_each_entry_safe(cursor, tmp, &rules_list, list) {
         // Disaccoppiamo il nodo
         list_del(&cursor->list);
+
+        unhook_specific_syscall(cursor->syscall_num);
         
         // Grazie al Reference Counting del Kernel è garantito che non ci sono più lettori attivi, 
         // possiamo deallocare direttamente la memoria senza usare synchronize_rcu()

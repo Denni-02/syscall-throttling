@@ -1,29 +1,40 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <errno.h>
 
-int main() {
-    printf("[*] --- INIZIO TEST AVANZATO DI THROTTLING ---\n");
+int main(int argc, char *argv[]) {
+    // Controllo argomenti 
+    if (argc != 2) {
+        printf("[-] Errore sintassi.\n");
+        printf("[*] Uso: %s <numero_syscall>\n", argv[0]);
+        printf("[*] Esempio: %s 83\n", argv[0]);
+        return 1;
+    }
 
-    /* FASE 1: Restiamo sotto il radar */
-    printf("\n[*] FASE 1: Lancio 2 chiamate veloci (Limite = 3). Non dovrebbero bloccarsi.\n");
+    int target_syscall = atoi(argv[1]);
+
+    printf("[*] --- INIZIO TEST AVANZATO DI THROTTLING (Syscall %d) ---\n", target_syscall);
+
+    // Restiamo sotto il radar
+    printf("\n[*] FASE 1: Lancio 2 chiamate veloci. Non dovrebbero bloccarsi.\n");
     for (int i = 1; i <= 2; i++) {
-        syscall(134);
+        syscall(target_syscall);
         printf("[+] Chiamata FASE 1 - Iterazione %d completata.\n", i);
     }
 
-    /* FASE 2: Il Reset */
+    // Reset
     printf("\n[*] FASE 2: Pausa di 1.5 secondi...\n");
     printf("[*] Questo darà tempo al Kthread di azzerare i contatori nel Ring 0.\n");
-    usleep(1500000); /* 1.5 milioni di microsecondi */
+    usleep(1500000); 
 
-    /* FASE 3: L'Attacco di saturazione */
+    // Saturazione
     printf("\n[*] FASE 3: Lancio 4 chiamate veloci. La quarta DEVE congelarsi.\n");
     for (int i = 1; i <= 4; i++) {
-        printf("[>] Sparo chiamata %d...\n", i);
-        syscall(134);
-        printf("[+] Chiamata FASE 3 - Iterazione %d completata (Svegliato!).\n", i);
+        printf("[>] Chiamata %d...\n", i);
+        syscall(target_syscall);
+        printf("[+] Chiamata FASE 3 - Iterazione %d completata.\n", i);
     }
 
     printf("\n[*] --- TEST CONCLUSO ---\n");

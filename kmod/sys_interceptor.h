@@ -9,20 +9,29 @@
 #define SYS_INTERCEPTOR_H
 
 /**
- * init_interceptor() - Avvia la procedura di discovery e hooking.
- * Esegue il discovery della sys_call_table (tramite Kprobes o Memory Scanner
- * a seconda del flag di compilazione) e inietta la system call fittizia.
- *
+ * init_interceptor() - Avvia la procedura di discovery.
  * Return: 0 in caso di successo, un codice di errore negativo altrimenti.
- */
+*/
 int init_interceptor(void);
 
 /**
- * cleanup_interceptor() - Ripristina la sys_call_table originale.
- * Rimuove l'hook disabilitando temporaneamente la protezione hardware in
- * scrittura e ripristina il puntatore originale, garantendo che lo scaricamento
- * del modulo non causi Kernel Panic alle successive chiamate di sistema.
- */
+ * cleanup_interceptor() - Esegue la pulizia allo scaricamento del modulo.
+*/
 void cleanup_interceptor(void);
+
+/**
+ * hook_specific_syscall() - Inietta l'hook su una syscall specifica.
+ * Implementa il Reference Counting per evitare sovrascritture.
+ * @syscall_num: Il numero della system call da intercettare.
+ * Return: 0 in caso di successo.
+*/
+int hook_specific_syscall(int syscall_num);
+
+/**
+ * unhook_specific_syscall() - Rimuove l'hook da una syscall specifica.
+ * Ripristina il puntatore originale solo se il Reference Count scende a 0.
+ * @syscall_num: Il numero della system call da ripristinare.
+*/
+void unhook_specific_syscall(int syscall_num);
 
 #endif // SYS_INTERCEPTOR_H

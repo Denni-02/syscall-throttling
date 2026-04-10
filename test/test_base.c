@@ -1,22 +1,31 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <errno.h>
 
-#define ITERATIONS 1
+int main(int argc, char *argv[]) {
+    // Controllo degli argomenti 
+    if (argc != 3) {
+        printf("[-] Errore sintassi.\n");
+        printf("[*] Uso: %s <numero_syscall> <iterazioni>\n", argv[0]);
+        printf("[*] Esempio: %s 83 10\n", argv[0]);
+        return 1;
+    }
 
-int main() {
-    printf("[*] Invocazione multipla della syscall 134 in corso (%d iterazioni)...\n", ITERATIONS);
+    // Estrazione parametri 
+    int target_syscall = atoi(argv[1]);
+    int iterations = atoi(argv[2]);
+
+    printf("[*] Invocazione multipla della syscall %d in corso (%d iterazioni)...\n", target_syscall, iterations);
     
-    for (int i = 1; i <= ITERATIONS; i++) {
-        long res = syscall(134);
+    for (int i = 1; i <= iterations; i++) {
+        long res = syscall(target_syscall);
         
         if (res == -1) {
-            printf("[%d] [-] NESSUN HOOK. Risultato = %ld, Errno = %d (Funzione non implementata)\n", i, res, errno);
-        } else if (res == 0) {
-            printf("[%d] [+] SUCCESSO! Risultato = 0\n", i);
+            printf("[%d] [-] Risultato = -1, Errno = %d\n", i, errno);
         } else {
-            printf("[%d] [?] Esito anomalo. Risultato = %ld\n", i, res);
+            printf("[%d] [+] Risultato = %ld\n", i, res);
         }
     }
     

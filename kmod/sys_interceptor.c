@@ -2,7 +2,7 @@
  * Sottosistema di intercettazione delle chiamate di sistema.
  * Implementa la discovery dinamica della sys_call_table e il dirottamento
  * (hooking) del flusso di esecuzione verso il Reference Monitor.
- * Il file supporta due algoritmi di discovery selezionabili a tempo di 
+ * Supporta due algoritmi di discovery selezionabili a tempo di 
  * compilazione: Kprobes e MMU Scanner.
 */
 
@@ -13,6 +13,17 @@
 #include "sys_interceptor.h"
 #include "policy_engine.h"
 
+#define MAX_SYSCALLS 512 // syscall supportate in x86_64
+
+// Array che conta quante regole stanno monitorando una syscall
+static int syscall_refcount[MAX_SYSCALLS] = {0};
+
+// Array per salvare i puntatori originali
+static void *original_syscall_ptrs[MAX_SYSCALLS] = {NULL};
+
+// Lock per evitare Race Condition se aggiungiamo regole contemporaneamente
+static DEFINE_SPINLOCK(hook_lock);
+
 // Puntatore globale che ospiterà l'indirizzo della tabella trovata 
 unsigned long **sys_call_table_ptr = NULL;
 
@@ -20,32 +31,39 @@ unsigned long **sys_call_table_ptr = NULL;
 unsigned long *original_ni_syscall = NULL;
 
 /* ========================================================================= *
- * IL REFERENCE MONITOR (TRAMPOLINO DI PASS-THROUGH)                         *
+ * REFERENCE MONITOR                                                         *
  * ========================================================================= */
 
-/* Definiamo il tipo di puntatore a funzione per le syscall moderne (che usano pt_regs) */
+// Definiamo il tipo di puntatore a funzione per le syscall
 typedef asmlinkage long (*syscall_wrapper_t)(const struct pt_regs *regs);
 
 asmlinkage long my_dummy_syscall(const struct pt_regs *regs) {
     syscall_wrapper_t original_sys_call;
+    int dynamic_syscall_num;
 
-    /* 1. Applichiamo la policy di Throttling 
-     * (Passiamo 134 hardcodato per ora, ma lo renderemo dinamico a breve) 
-     */
-    enforce_syscall_policy(134);
+    // 1. Estrazione dinamica del numero della syscall dall'hardware (x86_64)
+    dynamic_syscall_num = (int)regs->orig_ax;
+    if (dynamic_syscall_num < 0 || dynamic_syscall_num >= MAX_SYSCALLS) {
+        printk(KERN_ERR "[Syscall_Throttling] Numero syscall fuori range: %d\n", dynamic_syscall_num);
+        return -ENOSYS;
+    }
 
-    /* 2. Recuperiamo il puntatore alla syscall originale che avevamo salvato in Fase 3 */
-    original_sys_call = (syscall_wrapper_t)original_ni_syscall;
+    // 2. Applichiamo la policy passando il numero reale appena estratto
+    enforce_syscall_policy(dynamic_syscall_num);
 
-    /* 3. Esecuzione Reale (Pass-Through): 
-     * Lasciamo che il kernel esegua la vera operazione richiesta dallo User Space
-     * e restituiamo il suo esito originale, in modo che l'utente non si accorga di nulla.
-     */
+    // 3. Recuperiamo il puntatore alla syscall originale 
+    original_sys_call = (syscall_wrapper_t)original_syscall_ptrs[dynamic_syscall_num];
+    if (!original_sys_call) {
+        printk(KERN_ERR "[Syscall_Throttling] Puntatore originale NULL per la syscall %d!\n", dynamic_syscall_num);
+        return -ENOSYS;
+    }
+
+    // 4. Esecuzione Reale: 
     return original_sys_call(regs);
 }
 
 /* ========================================================================= *
- * DISPATCHER OVERRIDE (KERNEL >= 5.15)                       *
+ * DISPATCHER OVERRIDE (KERNEL >= 5.15)                                      *
  * ========================================================================= */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 #define INST_LEN 5
@@ -55,7 +73,7 @@ static char original_dispatcher_code[INST_LEN];
 
 static struct kprobe kp_dispatcher = { .symbol_name = "x64_sys_call" };
 
-/* Ripristina l'uso della tabella in RAM bypassando il dispatcher hardcoded */
+// Ripristina l'uso della tabella in RAM bypassando il dispatcher hardcoded
 static inline void dispatcher_override_call(struct pt_regs *regs, unsigned int nr) {
     asm volatile("mov (%1, %0, 8), %%rax\n\t"
                  "jmp __x86_indirect_thunk_rax\n\t"
@@ -88,7 +106,7 @@ static int prepare_dispatcher_override(void) {
 #endif
 
 /* ========================================================================= *
- * ALGORITMO DI DISCOVERY                              
+ * ALGORITMO DI DISCOVERY                                                    *
  * ========================================================================= */
 
 #if USE_KPROBES_DISCOVERY == 1
@@ -164,10 +182,11 @@ static inline void end_syscall_table_hack(void) {
 }
 
 /* ========================================================================= *
- * INTERFACCIA PUBBLICA DEL SOTTOSISTEMA               
+ * INTERFACCIA PUBBLICA DEL SOTTOSISTEMA                                     *  
  * ========================================================================= */
 
 int init_interceptor(void) {
+    unsigned long *syscall_array;
     printk(KERN_INFO "[Syscall_Throttling] Avvio discovery della Syscall Table...\n");
     
     // Invochiamo la funzione che, in base al Makefile, sarà Kprobes o lo Scanner
@@ -178,7 +197,7 @@ int init_interceptor(void) {
         return -1;
     }
 
-    /** 
+    /* 
      * Security Audit: Usiamo %px esclusivamente in fase di sviluppo per bypassare
      * l'hashing dei puntatori (KASLR) e stampare l'indirizzo esadecimale puro.
      * Questo ci permetterà di verificare visivamente il successo dell'attacco.
@@ -186,48 +205,101 @@ int init_interceptor(void) {
     printk(KERN_INFO "[Syscall_Throttling] Syscall Table trovata con successo all'indirizzo: %px\n", 
            (void *)sys_call_table_ptr);
 
-    /* === INIZIO ATTACCO === */
+    syscall_array = (unsigned long *)sys_call_table_ptr;
+
+    // Fallback
+    original_ni_syscall = (void *)syscall_array[134];
+
+/* Ripristiniamo il bypass delle difese per Kernel >= 5.15 */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
     printk(KERN_INFO "[Syscall_Throttling] Kernel >= 5.15 rilevato: Preparazione Dispatcher Override...\n");
-    if (prepare_dispatcher_override() < 0) return -1;
-#endif
+    if (prepare_dispatcher_override() < 0) {
+        return -1;
+    }
 
-    printk(KERN_INFO "[Syscall_Throttling] Disattivazione protezione CR0 e iniezione dell'hook...\n");
     begin_syscall_table_hack();
-    
-    original_ni_syscall = (unsigned long *)sys_call_table_ptr[134];
-    sys_call_table_ptr[134] = (unsigned long *)my_dummy_syscall;
-    
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
-    /* Scriviamo brutalmente il salto (JMP) dentro il codice eseguibile del kernel! */
-    memcpy((unsigned char *)x64_sys_call_addr, jump_inst, INST_LEN);
-#endif
-
+    memcpy((void *)x64_sys_call_addr, jump_inst, INST_LEN);
     end_syscall_table_hack();
-    printk(KERN_INFO "[Syscall_Throttling] Hook installato con successo.\n");
-    /* === FINE ATTACCO === */
+
+    printk(KERN_INFO "[Syscall_Throttling] Dispatcher Override iniettato. Il kernel ora legge dalla RAM.\n");
+
+#endif
 
     return 0;
 }
 
 void cleanup_interceptor(void) {
-    if (sys_call_table_ptr && original_ni_syscall) {
-        printk(KERN_INFO "[Syscall_Throttling] Ripristino della Syscall Table originale...\n");
-        begin_syscall_table_hack();
-        
-        // Ripristiniamo la tabella 
-        sys_call_table_ptr[134] = original_ni_syscall;
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
-        // Rimuoviamo il salto (JMP) e ripristiniamo le istruzioni originali 
-        if (x64_sys_call_addr) {
-            printk(KERN_INFO "[Syscall_Throttling] Ripristino del dispatcher x64_sys_call...\n");
-            memcpy((unsigned char *)x64_sys_call_addr, original_dispatcher_code, INST_LEN);
-        }
-#endif
+    // Ripristiniamo il dispatcher originale per evitare Kernel Panic allo scaricamento 
+    if (x64_sys_call_addr) {
+        begin_syscall_table_hack();
+        memcpy((void *)x64_sys_call_addr, original_dispatcher_code, INST_LEN);
         end_syscall_table_hack();
-        printk(KERN_INFO "[Syscall_Throttling] Intercettore smontato. Sistema sicuro.\n");
-    } else {
-        printk(KERN_INFO "[Syscall_Throttling] Nessun hook da ripristinare.\n");
+        printk(KERN_INFO "[Syscall_Throttling] Dispatcher Override rimosso.\n");
     }
+#endif
+    printk(KERN_INFO "[Syscall_Throttling] Intercettore smontato in sicurezza.\n");
+}
+
+int hook_specific_syscall(int syscall_num) {
+    unsigned long *syscall_array;
+
+    if (syscall_num < 0 || syscall_num >= MAX_SYSCALLS) return -EINVAL;
+    if (!sys_call_table_ptr) return -EFAULT;
+
+    syscall_array = (unsigned long *)sys_call_table_ptr;
+
+    spin_lock(&hook_lock);
+
+    // Se è la prima regola su questa syscall, procediamo con l'iniezione
+    if (syscall_refcount[syscall_num] == 0) {
+        // Salviamo il puntatore originale
+        original_syscall_ptrs[syscall_num] = (void *)syscall_array[syscall_num];
+
+        // Disattivazione CR0/CR4 e iniezione del nostro hook
+        begin_syscall_table_hack();
+        syscall_array[syscall_num] = (unsigned long)my_dummy_syscall;
+        end_syscall_table_hack();
+
+        printk(KERN_INFO "[Syscall_Throttling] Hook FISICO installato sulla Syscall %d\n", syscall_num);
+    } else {
+        printk(KERN_INFO "[Syscall_Throttling] Syscall %d già hookata. Incremento solo il contatore.\n", syscall_num);
+    }
+
+    // Incrementiamo i riferimenti
+    syscall_refcount[syscall_num]++;
+    spin_unlock(&hook_lock);
+
+    return 0;
+}
+
+void unhook_specific_syscall(int syscall_num) {
+    unsigned long *syscall_array;
+
+    if (syscall_num < 0 || syscall_num >= MAX_SYSCALLS) return;
+    if (!sys_call_table_ptr) return;
+
+    syscall_array = (unsigned long *)sys_call_table_ptr;
+
+    spin_lock(&hook_lock);
+
+    if (syscall_refcount[syscall_num] > 0) {
+        syscall_refcount[syscall_num]--;
+
+        // Se nessuna regola monitora più questa syscall, ripristiniamo il kernel
+        if (syscall_refcount[syscall_num] == 0) {
+            
+            begin_syscall_table_hack();
+            syscall_array[syscall_num] = (unsigned long)original_syscall_ptrs[syscall_num];
+            end_syscall_table_hack();
+
+            original_syscall_ptrs[syscall_num] = NULL;
+            
+            printk(KERN_INFO "[Syscall_Throttling] Hook FISICO rimosso dalla Syscall %d\n", syscall_num);
+        } else {
+            printk(KERN_INFO "[Syscall_Throttling] Regola rimossa, ma la Syscall %d rimane hookata (%d regole attive).\n", 
+                   syscall_num, syscall_refcount[syscall_num]);
+        }
+    }
+    spin_unlock(&hook_lock);
 }

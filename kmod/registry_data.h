@@ -19,9 +19,8 @@
  *
  * Alloca dinamicamente (tramite kmalloc) un nuovo nodo per la regola e lo 
  * inserisce nella lista collegata.
- *
  * Return: 0 in caso di successo, -ENOMEM se l'allocazione di memoria fallisce.
- */
+*/
 int add_rule(int uid, const char *comm, int syscall_num, int max_calls);
 
 /**
@@ -30,7 +29,7 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls);
  *
  * Sgancia il nodo dalla lista protetta.
  * Return: 0 se la regola è stata rimossa, -ENOENT se non è stata trovata.
- */
+*/
 int remove_rule(int syscall_num);
 
 /**
@@ -42,7 +41,6 @@ int remove_rule(int syscall_num);
  *
  * Attraversa il database in RAM. Se trova una regola corrispondente, 
  * incrementa in modo atomico (lock-free) il contatore delle chiamate.
- * 
  * Return: 1 se il limite MAX è stato superato (il thread DEVE essere sospeso), 
  * 0 se il processo può procedere (nessuna regola trovata, o limite non superato).
 */
@@ -57,7 +55,6 @@ void cleanup_registry(void);
 
 /**
  * reset_all_counters() - Azzeramento asincrono per la nuova finestra temporale
- *
  * Viene invocata periodicamente dal demone di sistema (Kthread). Attraversa
  * il database e resetta a zero il contatore atomico `current_calls` di tutte
  * le regole attive, permettendo ai thread di riprendere le invocazioni.
