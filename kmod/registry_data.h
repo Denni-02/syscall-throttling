@@ -61,6 +61,25 @@ void cleanup_registry(void);
 */
 void reset_all_counters(void);
 
+/**
+ * update_peak_delay() - Registra il ritardo massimo subìto
+ * @syscall_num: La syscall bersaglio
+ * @delay_cycles: I cicli di clock
+ * @victim_uid: UID del processo che ha subìto il blocco
+ * @victim_comm: Nome del processo che ha subìto il blocco
+ */
+void update_peak_delay(int syscall_num, unsigned long long delay_cycles, int victim_uid, const char *victim_comm);
+
+/**
+ * update_thread_stats() - Aggiorna il picco di thread bloccati simultaneamente
+ * @syscall_num: La syscall bersaglio
+ * @current_blocked_now: Il numero di thread attualmente in Wait Queue
+ * 
+ * Viene chiamata dal policy_engine ogni volta che un thread sta per essere
+ * addormentato. Garantisce l'integrità dei dati tramite spinlock globale.
+ */
+void update_thread_stats(int syscall_num, int current_blocked_now);
+
 void debug_print_rules(void); // Utility di stampa
 
 #endif // REGISTRY_DATA_H

@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     printf("[*] Invocazione multipla della syscall %d in corso (%d iterazioni)...\n", target_syscall, iterations);
     
     for (int i = 1; i <= iterations; i++) {
-        long res = syscall(target_syscall);
+        long res = syscall(target_syscall, NULL, 0); // Passiamo argomenti dummy per evitare errori di EINVAL
         
         if (res == -1) {
             printf("[%d] [-] Risultato = -1, Errno = %d\n", i, errno);

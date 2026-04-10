@@ -28,4 +28,6 @@ int start_policy_engine(void);
 */
 void stop_policy_engine(void);
 
+extern int global_monitor_state;
+
 #endif /* POLICY_ENGINE_H */

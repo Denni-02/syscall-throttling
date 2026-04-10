@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
     // Restiamo sotto il radar
     printf("\n[*] FASE 1: Lancio 2 chiamate veloci. Non dovrebbero bloccarsi.\n");
     for (int i = 1; i <= 2; i++) {
-        syscall(target_syscall);
+        syscall(target_syscall, NULL, 0);
         printf("[+] Chiamata FASE 1 - Iterazione %d completata.\n", i);
     }
 
@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
     printf("\n[*] FASE 3: Lancio 4 chiamate veloci. La quarta DEVE congelarsi.\n");
     for (int i = 1; i <= 4; i++) {
         printf("[>] Chiamata %d...\n", i);
-        syscall(target_syscall);
+        syscall(target_syscall, NULL, 0);
         printf("[+] Chiamata FASE 3 - Iterazione %d completata.\n", i);
     }
 

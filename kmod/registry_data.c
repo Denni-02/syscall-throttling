@@ -21,6 +21,10 @@
  * @syscall_num: Numero della system call bersaglio
  * @max_calls:   Soglia massima di chiamate permesse in 1 secondo
  * @current_calls: Contatore atomico thread-safe delle invocazioni correnti
+ * @peak_delay:  Ritardo massimo registrato (in cicli di clock)
+ * @peak_victim_uid: UID del processo che ha subito il ritardo massimo
+ * @peak_victim_comm: Nome del processo che ha subito il ritardo massimo
+ * @peak_threads_blocked: Numero di thread bloccati durante il picco di ritardo
  * @list:        Struttura kernel standard per l'ancoraggio alla doubly-linked list
 */
 struct throttling_rule {
@@ -29,6 +33,10 @@ struct throttling_rule {
     int syscall_num;
     int max_calls;
     atomic_t current_calls;
+    unsigned long long peak_delay;
+    int peak_victim_uid;
+    char peak_victim_comm[MAX_COMM_LEN];
+    int peak_threads_blocked;
     struct list_head list; 
 };
 
@@ -55,6 +63,10 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
     new_rule->syscall_num = syscall_num;
     new_rule->max_calls = max_calls;
     atomic_set(&new_rule->current_calls, 0);
+    new_rule->peak_delay = 0;
+    new_rule->peak_victim_uid = -1;
+    new_rule->peak_victim_comm[0] = '\0';
+    new_rule->peak_threads_blocked = 0;
     if (comm != NULL) {
         strncpy(new_rule->comm, comm, MAX_COMM_LEN - 1);
         new_rule->comm[MAX_COMM_LEN - 1] = '\0'; 
@@ -227,4 +239,46 @@ void reset_all_counters(void) {
     }
     rcu_read_unlock();
 #endif
+}
+
+// Aggiorna le statistiche se viene rilevato un nuovo picco di ritardo
+void update_peak_delay(int syscall_num, unsigned long long delay_cycles, int victim_uid, const char *victim_comm) {
+    struct throttling_rule *cursor;
+    
+    /* Usiamo lo spinlock per evitare che due thread si risveglino
+     * nello stesso microsecondo e corrompano il salvataggio dei dati.
+    */
+    spin_lock(&registry_lock);
+    list_for_each_entry(cursor, &rules_list, list) {
+        if (cursor->syscall_num == syscall_num) {
+            
+            // Se il nuovo ritardo è maggiore del picco storico, aggiorniamo il record 
+            if (delay_cycles > cursor->peak_delay) {
+                cursor->peak_delay = delay_cycles;
+                cursor->peak_victim_uid = victim_uid;
+                
+                if (victim_comm != NULL) {
+                    strncpy(cursor->peak_victim_comm, victim_comm, MAX_COMM_LEN - 1);
+                    cursor->peak_victim_comm[MAX_COMM_LEN - 1] = '\0';
+                }
+            }
+            break; // Regola trovata e aggiornata, esci dal ciclo 
+        }
+    }
+    spin_unlock(&registry_lock);
+}
+
+// Aggiorna il picco di thread bloccati simultaneamente
+void update_thread_stats(int syscall_num, int current_blocked_now) {
+    struct throttling_rule *cursor;
+    spin_lock(&registry_lock);
+    list_for_each_entry(cursor, &rules_list, list) {
+        if (cursor->syscall_num == syscall_num) {
+            if (current_blocked_now > cursor->peak_threads_blocked) {
+                cursor->peak_threads_blocked = current_blocked_now;
+            }
+            break;
+        }
+    }
+    spin_unlock(&registry_lock);
 }
