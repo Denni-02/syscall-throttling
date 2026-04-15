@@ -7,6 +7,7 @@
 #include <linux/uaccess.h> 
 #include <linux/cred.h>   
 #include <linux/sched.h>
+#include <linux/slab.h>
 #include "../include/defender_api.h"
 #include "registry_data.h"
 
@@ -93,6 +94,35 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             
             printk(KERN_INFO "[Syscall_Throttling] Stato del monitor cambiato: %s\n", 
                    global_monitor_state ? "ATTIVO" : "DISATTIVATO");
+            break;
+        }
+
+        case IOCTL_LIST_RULES: {
+            struct list_payload *list_data;
+
+            /* Allocazione dinamica nell'heap del kernel (Ring 0).
+             * Utilizziamo kzalloc per azzerare la memoria e prevenire leak di dati 
+             * precedentemente presenti in RAM verso lo User Space.
+             */
+            list_data = kzalloc(sizeof(struct list_payload), GFP_KERNEL);
+            if (!list_data) {
+                return -ENOMEM;
+            }
+
+            // Popoliamo la struttura leggendo dal database protetto da spinlock
+            get_active_rules(list_data);
+
+            /* Trasferimento atomico della memoria verso lo User Space.
+             * La funzione copy_to_user verifica la validità del puntatore 'arg' 
+             * e gestisce eventuali Page Fault in modo sicuro.
+             */
+            if (copy_to_user((struct list_payload __user *)arg, list_data, sizeof(struct list_payload))) {
+                kfree(list_data);
+                return -EFAULT;
+            }
+            
+            // Liberiamo la memoria heap prima di tornare al chiamante
+            kfree(list_data);
             break;
         }
 

@@ -9,7 +9,7 @@
 #include <linux/ioctl.h>
 
 #define MAX_COMM_LEN 16 // Lunghezza massima del nome di un processo in Linux (TASK_COMM_LEN)
-
+#define MAX_RULES_EXPORT 50 // Limite massimo di regole esportabili in una query
 
 /**
  * struct config_data - Payload per la configurazione del Reference Monitor
@@ -33,6 +33,7 @@ struct config_data {
  * @peak_victim_uid:      (OUT) User ID del processo che ha subito il ritardo massimo
  * @peak_victim_comm:     (OUT) Nome dell'eseguibile che ha subito il ritardo massimo
  * @peak_threads_blocked: (OUT) Numero massimo di thread bloccati simultaneamente
+ * @average_threads_blocked: (OUT) Numero medio di thread bloccati simultaneamente
  * Lo User Space compila @syscall_num e la invia al Ring 0. 
  * Il Kernel legge il numero, estrae i dati dal database e
  * sovrascrive i campi (OUT) prima di rimandarla al Ring 3.
@@ -43,6 +44,17 @@ struct stats_payload {
     int peak_victim_uid;
     char peak_victim_comm[MAX_COMM_LEN];
     int peak_threads_blocked;
+    int average_threads_blocked;
+};
+
+/**
+ * struct list_payload - Payload per esportare l'elenco delle regole dal Ring 0
+ * @count: Numero di regole attualmente attive
+ * @rules: Array che RIUTILIZZA struct config_data per mostrare le regole
+*/
+struct list_payload {
+    int count;
+    struct config_data rules[MAX_RULES_EXPORT]; /* <- Usiamo la tua! */
 };
 
 /**
@@ -70,5 +82,12 @@ struct stats_payload {
  * il motore di policy senza dover scaricare il modulo.
 */
 #define IOCTL_TOGGLE_MONITOR _IOW('T', 3, int)
+
+/**
+ * IOCTL_LIST_RULES - Magic Number per ottenere la lista delle regole attive
+ * Utilizziamo la macro _IOR (Ioctl Read) in quanto lo User Space 
+ * si limita a ricevere (leggere) l'array popolato dal Kernel.
+*/
+#define IOCTL_LIST_RULES _IOR('T', 4, struct list_payload)
 
 #endif // DEFENDER_API_H

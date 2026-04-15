@@ -14,13 +14,6 @@
 
 #define DEVICE_PATH "/dev/syscall_defender"
 
-/**
- * print_usage() - Mostra l'interfaccia a riga di comando (CLI)
- * @prog_name: Il nome dell'eseguibile invocato (argv[0])
- *
- * Fornisce un feedback immediato all'utente in caso di sintassi errata,
- * documentando i flag supportati dal tool.
-*/
 void print_usage(const char *prog_name) {
     printf("\n=== Syscall Throttling - Pannello di Controllo ===\n");
     printf("1. Aggiungi regola:\n");
@@ -29,13 +22,11 @@ void print_usage(const char *prog_name) {
     printf("   %s -g <syscall_num>\n", prog_name);
     printf("3. Accendi/Spegni Monitor Globale:\n");
     printf("   %s -e  (Abilita)\n", prog_name);
-    printf("   %s -d  (Disabilita)\n\n", prog_name);
+    printf("   %s -d  (Disabilita)\n", prog_name);
+    printf("4. Mostra Regole Attive:\n");
+    printf("   %s -l\n\n", prog_name);
 }
 
-/**
- * print_stats_report() - Formatta i dati estratti dal kernel
- * @stats: Struttura contenente i dati popolati dal Ring 0
-*/
 void print_stats_report(struct stats_payload *stats) {
     printf("\n======================================================\n");
     printf(" REPORT STATISTICHE - SYSCALL %d\n", stats->syscall_num);
@@ -48,34 +39,31 @@ void print_stats_report(struct stats_payload *stats) {
         printf(" [-] Vittima               : [Nessun blocco registrato]\n");
     }
     printf(" [-] Picco Thread Bloccati : %d\n", stats->peak_threads_blocked);
+    printf(" [-] Media Thread Bloccati : %d\n", stats->average_threads_blocked);
     printf("======================================================\n\n");
 }
 
-/**
- * main() - Entry point dello User Space Application
-*/
 int main(int argc, char *argv[]) {
     int fd;
     int opt;
     struct config_data config;
 
     int get_stats_syscall = -1;
-    int toggle_monitor = -1; // 1 = Enable, 0 = Disable
+    int toggle_monitor = -1; 
+    int list_rules = 0;
 
-    // Inizializziamo la struct con valori di default (-1 e stringa vuota)
     config.target_uid = -1;
     config.syscall_num = -1;
     config.max_calls = -1;
     memset(config.comm, 0, MAX_COMM_LEN);
 
-    // Se l'utente non passa argomenti, mostriamo il manuale
     if (argc < 2) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
     }
 
-    // Parsing degli argomenti da riga di comando tramite getopt
-    while ((opt = getopt(argc, argv, "s:m:u:p:g:ed")) != -1) {
+    // IL SEGRETO E' QUI: abbiamo aggiunto la 'l' nel getopt
+    while ((opt = getopt(argc, argv, "s:m:u:p:g:edl")) != -1) {
         switch (opt) {
             case 's': config.syscall_num = atoi(optarg); break;
             case 'm': config.max_calls = atoi(optarg); break;
@@ -84,14 +72,13 @@ int main(int argc, char *argv[]) {
             case 'g': get_stats_syscall = atoi(optarg); break;
             case 'e': toggle_monitor = 1; break;
             case 'd': toggle_monitor = 0; break;
+            case 'l': list_rules = 1; break; // GESTIONE DEL FLAG -l
             default:
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
         }
     }
 
-    // Apertura del Device
-    printf("[CLI] Tentativo di apertura del device %s...\n", DEVICE_PATH);
     fd = open(DEVICE_PATH, O_RDWR);
     if (fd < 0) {
         perror("[!] Errore nell'apertura del device (Sei root?)");
@@ -102,54 +89,71 @@ int main(int argc, char *argv[]) {
     if (toggle_monitor != -1) {
         if (ioctl(fd, IOCTL_TOGGLE_MONITOR, &toggle_monitor) < 0) {
             perror("[!] Errore IOCTL_TOGGLE_MONITOR");
-            close(fd);
-            return EXIT_FAILURE;
+            close(fd); return EXIT_FAILURE;
         }
         printf("[CLI] Motore Globale di Throttling: %s\n", toggle_monitor ? "ATTIVO" : "DISATTIVATO");
-        close(fd);
-        return EXIT_SUCCESS;
+        close(fd); return EXIT_SUCCESS;
     }
 
     /* --- AZIONE B: ESTRAI STATISTICHE --- */
     if (get_stats_syscall != -1) {
         struct stats_payload stats;
-        stats.syscall_num = get_stats_syscall; // Impostiamo la syscall richiesta
+        stats.syscall_num = get_stats_syscall;
 
         if (ioctl(fd, IOCTL_GET_STATS, &stats) < 0) {
-            perror("[!] Errore IOCTL_GET_STATS (La regola esiste?)");
-            close(fd);
-            return EXIT_FAILURE;
+            perror("[!] Errore IOCTL_GET_STATS");
+            close(fd); return EXIT_FAILURE;
         }
         
         print_stats_report(&stats);
-        close(fd);
-        return EXIT_SUCCESS;
+        close(fd); return EXIT_SUCCESS;
     }
 
-    /* --- AZIONE C: INSERISCI REGOLA (Logica Originale) --- */
+    /* --- AZIONE D: LISTA REGOLE ATTIVE --- */
+    if (list_rules) {
+        struct list_payload list_data;
+        
+        if (ioctl(fd, IOCTL_LIST_RULES, &list_data) < 0) {
+            perror("[!] Errore durante il recupero della lista regole");
+            close(fd); return EXIT_FAILURE;
+        }
+        
+        printf("\n======================================================================\n");
+        printf(" REGOLE DI THROTTLING ATTIVE (%d/%d)\n", list_data.count, MAX_RULES_EXPORT);
+        printf("======================================================================\n");
+        
+        if (list_data.count == 0) {
+            printf(" Nessuna regola configurata nel database del Kernel.\n");
+        } else {
+            printf(" %-4s | %-8s | %-8s | %-8s | %-16s\n", "ID", "SYSCALL", "MAX/s", "UID", "PROGRAMMA");
+            printf("----------------------------------------------------------------------\n");
+            for (int i = 0; i < list_data.count; i++) {
+                printf(" [%02d] | %-8d | %-8d | %-8d | %-16s\n", 
+                       i + 1,
+                       list_data.rules[i].syscall_num, 
+                       list_data.rules[i].max_calls,
+                       list_data.rules[i].target_uid,
+                       strlen(list_data.rules[i].comm) > 0 ? list_data.rules[i].comm : "TUTTI");
+            }
+        }
+        printf("======================================================================\n\n");
+        close(fd); return EXIT_SUCCESS;
+    }
+
+    /* --- AZIONE C: INSERISCI REGOLA --- */
     if (config.syscall_num == -1 || config.max_calls == -1) {
         printf("[!] Errore: Per aggiungere una regola servono -s e -m.\n");
-        close(fd);
-        return EXIT_FAILURE;
+        close(fd); return EXIT_FAILURE;
     }
-    if (config.target_uid == -1 && strlen(config.comm) == 0) {
-        printf("[!] Errore: Specifica un filtro (-u o -p).\n");
-        close(fd);
-        return EXIT_FAILURE;
-    }
-
+    
     printf("[CLI] Invio regola: Syscall %d, MAX %d, UID %d, Prog '%s'\n",
            config.syscall_num, config.max_calls, config.target_uid, config.comm);
     
     if (ioctl(fd, SET_THROTTLING_RULE, &config) < 0) {
         perror("[!] Errore IOCTL_SET_THROTTLING_RULE");
-        close(fd);
-        return EXIT_FAILURE;
+        close(fd); return EXIT_FAILURE;
     }
 
     printf("[CLI] Regola configurata con successo!\n");
-
-    // Chiusura del file descriptor
-    close(fd);
-    return EXIT_SUCCESS;
+    close(fd); return EXIT_SUCCESS;
 }

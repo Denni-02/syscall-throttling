@@ -88,6 +88,16 @@ void update_thread_stats(int syscall_num, int current_blocked_now);
  */
 int get_rule_stats(int syscall_num, struct stats_payload *out_stats);
 
+/**
+ * get_active_rules() - Estrae un'istantanea delle regole attualmente attive
+ * @out_list: Puntatore alla struttura payload da popolare
+ *
+ * Attraversa il database in RAM protetto da spinlock e copia i metadati
+ * delle regole all'interno dell'array fornito, fino a MAX_RULES_EXPORT.
+ * Utilizzata per l'esportazione sicura verso lo User Space tramite IOCTL.
+ */
+void get_active_rules(struct list_payload *out_list);
+
 void debug_print_rules(void); // Utility di stampa
 
 #endif // REGISTRY_DATA_H

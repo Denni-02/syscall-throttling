@@ -133,7 +133,14 @@ sudo ./cli_tool -g <syscall_num>
 
 L'output mostrerà il picco di ritardo (in cicli di clock), l'identificativo della vittima (UID e Programma) e il numero massimo e medio di thread bloccati simultaneamente per quella syscall.
 
-**3. Interruttore Globale**
+**3. Visualizzazione Regole Attive**
+Il tool permette di interrogare in tempo reale il database in Ring 0 (tramite un'allocazione sicura sull'heap del kernel) per ottenere un prospetto tabellare delle policy attualmente in enforcement.
+
+```bash
+sudo ./cli_tool -l
+```
+
+**4. Interruttore Globale**
 È possibile bypassare istantaneamente le regole di throttling senza dover disinstallare il modulo o cancellare le regole dalla RAM:
 
 ```bash

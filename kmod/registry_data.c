@@ -25,6 +25,8 @@
  * @peak_victim_uid: UID del processo che ha subito il ritardo massimo
  * @peak_victim_comm: Nome del processo che ha subito il ritardo massimo
  * @peak_threads_blocked: Numero di thread bloccati durante il picco di ritardo
+ * @cumulative_threads_blocked: Somma totale dei thread bloccati
+ * @throttle_events: Numero di eventi di throttling registrati
  * @list:        Struttura kernel standard per l'ancoraggio alla doubly-linked list
 */
 struct throttling_rule {
@@ -37,6 +39,8 @@ struct throttling_rule {
     int peak_victim_uid;
     char peak_victim_comm[MAX_COMM_LEN];
     int peak_threads_blocked;
+    unsigned long long cumulative_threads_blocked;
+    unsigned long long throttle_events;
     struct list_head list; 
 };
 
@@ -67,6 +71,8 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls) {
     new_rule->peak_victim_uid = -1;
     new_rule->peak_victim_comm[0] = '\0';
     new_rule->peak_threads_blocked = 0;
+    new_rule->cumulative_threads_blocked = 0;
+    new_rule->throttle_events = 0;
     if (comm != NULL) {
         strncpy(new_rule->comm, comm, MAX_COMM_LEN - 1);
         new_rule->comm[MAX_COMM_LEN - 1] = '\0'; 
@@ -268,34 +274,44 @@ void update_peak_delay(int syscall_num, unsigned long long delay_cycles, int vic
     spin_unlock(&registry_lock);
 }
 
-// Aggiorna il picco di thread bloccati simultaneamente
+// Aggiorna il picco e i dati per la media
 void update_thread_stats(int syscall_num, int current_blocked_now) {
     struct throttling_rule *cursor;
     spin_lock(&registry_lock);
     list_for_each_entry(cursor, &rules_list, list) {
         if (cursor->syscall_num == syscall_num) {
+            // Aggiorna il picco
             if (current_blocked_now > cursor->peak_threads_blocked) {
                 cursor->peak_threads_blocked = current_blocked_now;
             }
+            // Aggiorna i dati per la media
+            cursor->cumulative_threads_blocked += current_blocked_now;
+            cursor->throttle_events += 1;
             break;
         }
     }
     spin_unlock(&registry_lock);
 }
 
+// Estrae le statistiche di una singola regola
 int get_rule_stats(int syscall_num, struct stats_payload *out_stats) {
     struct throttling_rule *cursor;
     int found = 0;
 
-    // Blocchiamo il database per non leggere dati a metà mentre un thread si sveglia 
     spin_lock(&registry_lock);
     list_for_each_entry(cursor, &rules_list, list) {
         if (cursor->syscall_num == syscall_num) {
             
-            // Copiamo i dati nella struttura di destinazione 
             out_stats->peak_delay = cursor->peak_delay;
             out_stats->peak_victim_uid = cursor->peak_victim_uid;
             out_stats->peak_threads_blocked = cursor->peak_threads_blocked;
+            
+            /* Calcolo della media intera al volo (Safe Math) */
+            if (cursor->throttle_events > 0) {
+                out_stats->average_threads_blocked = (int)(cursor->cumulative_threads_blocked / cursor->throttle_events);
+            } else {
+                out_stats->average_threads_blocked = 0;
+            }
             
             if (strlen(cursor->peak_victim_comm) > 0) {
                 strncpy(out_stats->peak_victim_comm, cursor->peak_victim_comm, MAX_COMM_LEN);
@@ -304,10 +320,35 @@ int get_rule_stats(int syscall_num, struct stats_payload *out_stats) {
             }
             
             found = 1;
-            break; // Usciamo dal ciclo
+            break; 
         }
     }
     spin_unlock(&registry_lock);
 
     return found ? 0 : -ENOENT;
+}
+
+// Estrae un'istantanea di tutte le regole attualmente in memoria
+void get_active_rules(struct list_payload *out_list) {
+    struct throttling_rule *cursor;
+    int i = 0;
+
+    out_list->count = 0;
+    
+    // Blocchiamo il database per garantire una lettura coerente (Snapshot)
+    spin_lock(&registry_lock);
+    list_for_each_entry(cursor, &rules_list, list) {
+        if (i >= MAX_RULES_EXPORT) break; // Preveniamo buffer overflow
+        
+        // Usiamo la struct config_data riutilizzata dall'API
+        out_list->rules[i].syscall_num = cursor->syscall_num;
+        out_list->rules[i].max_calls = cursor->max_calls;
+        out_list->rules[i].target_uid = cursor->uid;
+        strncpy(out_list->rules[i].comm, cursor->comm, MAX_COMM_LEN);
+        
+        i++;
+    }
+    spin_unlock(&registry_lock);
+    
+    out_list->count = i;
 }
