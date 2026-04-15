@@ -12,6 +12,7 @@
 - [Modalità di Compilazione e Design Pattern](#modalità-di-compilazione-e-design-pattern)
 - [Deploy e Teardown](#deploy-e-teardown)
 - [Utilizzo e Configurazione (CLI Tool)](#utilizzo-e-configurazione-cli-tool)
+- [Debugging e Log del Kernel](#debugging-e-log-del-kernel)
 
 ---
 
@@ -98,7 +99,7 @@ Per rimuovere il modulo, liberare la memoria (Garbage Collection) e pulire l'amb
 
 L'interazione con il modulo Ring 0 avviene tramite un Character Device generato dinamicamente (`/dev/syscall_defender`) utilizzando la system call `ioctl`. 
 
-È stato sviluppato un tool C dedicato nello User Space (`userspace/cli_tool.c`) per l'amministrazione delle policy di throttling.
+È stato sviluppato un tool C dedicato nello User Space (`userspace/cli_tool.c`) per l'amministrazione delle policy di throttling, l'estrazione delle statistiche e il controllo globale del demone.
 
 **Sicurezza (Effective UID):** Come richiesto dalle specifiche, l'accesso al device e la configurazione delle regole richiedono rigorosamente i privilegi di amministratore. Il modulo verifica le credenziali del chiamante (`current_euid()`). Qualsiasi tentativo di accesso da parte di utenti non privilegiati verrà intercettato e respinto con errore `-EPERM` (Operation not permitted).
 
@@ -108,7 +109,7 @@ Per compilare il pannello di controllo utente:
 cd userspace
 make
 ```
-
+**1. Inserimento Regole di Throttling**
 La sintassi del comando richiede privilegi di root e accetta parametri dinamici tramite flag:
 
 ```bash
@@ -119,4 +120,41 @@ sudo ./cli_tool -s <syscall_num> -m <max_calls> [-u <uid>] [-p <program>]
 
 ```bash
 sudo ./cli_tool -s 2 -m 10 -u 1000
+```
+
+**2. Estrazione Statistiche** 
+Il modulo tiene traccia delle tempistiche di sospensione dei processi calcolando i cicli hardware della CPU tramite l'istruzione assembly rdtscp (superando il problema della migrazione della CPU).
+
+Per estrarre il report statistico di una regola:
+
+```bash
+sudo ./cli_tool -g <syscall_num>
+```
+
+L'output mostrerà il picco di ritardo (in cicli di clock), l'identificativo della vittima (UID e Programma) e il numero massimo e medio di thread bloccati simultaneamente per quella syscall.
+
+**3. Interruttore Globale**
+È possibile bypassare istantaneamente le regole di throttling senza dover disinstallare il modulo o cancellare le regole dalla RAM:
+
+```bash
+sudo ./cli_tool -d  # Disabilita il monitor
+sudo ./cli_tool -e  # Riabilita il monitor
+```
+
+---
+
+## Debugging e Log del Kernel
+
+Le operazioni di livello Kernel (attivazioni regole, calcoli hardware, intercettazioni) non vengono stampate sullo standard output dell'utente, ma scritte nel ring buffer del sistema operativo.
+
+Per visualizzare i log del modulo in tempo reale:
+
+```bash
+sudo dmesg -wH | grep Syscall_Throttling
+```
+
+Per leggere le ultime attività registrate:
+
+```bash
+sudo dmesg | tail -n 30
 ```
