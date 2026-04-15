@@ -80,6 +80,14 @@ void update_peak_delay(int syscall_num, unsigned long long delay_cycles, int vic
  */
 void update_thread_stats(int syscall_num, int current_blocked_now);
 
+/**
+ * get_rule_stats() - Estrae le statistiche di una specifica regola
+ * @syscall_num: La system call da cercare
+ * @out_stats: Puntatore alla struttura da popolare per lo User Space
+ * * Return: 0 in caso di successo, -ENOENT se la regola non esiste.
+ */
+int get_rule_stats(int syscall_num, struct stats_payload *out_stats);
+
 void debug_print_rules(void); // Utility di stampa
 
 #endif // REGISTRY_DATA_H

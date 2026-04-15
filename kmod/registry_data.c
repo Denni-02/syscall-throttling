@@ -282,3 +282,32 @@ void update_thread_stats(int syscall_num, int current_blocked_now) {
     }
     spin_unlock(&registry_lock);
 }
+
+int get_rule_stats(int syscall_num, struct stats_payload *out_stats) {
+    struct throttling_rule *cursor;
+    int found = 0;
+
+    // Blocchiamo il database per non leggere dati a metà mentre un thread si sveglia 
+    spin_lock(&registry_lock);
+    list_for_each_entry(cursor, &rules_list, list) {
+        if (cursor->syscall_num == syscall_num) {
+            
+            // Copiamo i dati nella struttura di destinazione 
+            out_stats->peak_delay = cursor->peak_delay;
+            out_stats->peak_victim_uid = cursor->peak_victim_uid;
+            out_stats->peak_threads_blocked = cursor->peak_threads_blocked;
+            
+            if (strlen(cursor->peak_victim_comm) > 0) {
+                strncpy(out_stats->peak_victim_comm, cursor->peak_victim_comm, MAX_COMM_LEN);
+            } else {
+                out_stats->peak_victim_comm[0] = '\0';
+            }
+            
+            found = 1;
+            break; // Usciamo dal ciclo
+        }
+    }
+    spin_unlock(&registry_lock);
+
+    return found ? 0 : -ENOENT;
+}

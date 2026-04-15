@@ -15,6 +15,9 @@
 // Major Number assegnato dinamicamente al momento della registrazione del device
 static int major_number;
 
+extern int global_monitor_state;
+extern int get_rule_stats(int syscall_num, struct stats_payload *out_stats);
+
 /**
  * defender_ioctl() - Handler per la system call ioctl() sul character device
  * @file: Puntatore alla struttura file del Virtual File System
@@ -51,7 +54,48 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             // Debug: Stampiamo la lista delle regole per verificare l'inserimento
             debug_print_rules();
             break;
+        
+        case IOCTL_GET_STATS: {
+            struct stats_payload stats;
+            int ret;
+
+            // Leggiamo la struttura (che contiene syscall_num) dallo User Space
+            if (copy_from_user(&stats, (struct stats_payload __user *)arg, sizeof(struct stats_payload))) {
+                return -EFAULT;
+            }
+
+            // Chiediamo al database di popolare i campi mancanti
+            ret = get_rule_stats(stats.syscall_num, &stats);
+            if (ret < 0) {
+                return -ENOENT; // Nessuna regola trovata per questa syscall
+            }
+
+            // Rispediamo la struttura compilata in modo sicuro allo User Space
+            if (copy_to_user((struct stats_payload __user *)arg, &stats, sizeof(struct stats_payload))) {
+                return -EFAULT;
+            }
             
+            printk(KERN_INFO "[Syscall_Throttling] Statistiche Syscall %d inviate con successo allo User Space.\n", 
+                   stats.syscall_num);
+            break;
+        }
+
+        case IOCTL_TOGGLE_MONITOR: {
+            int new_state;
+
+            // Leggiamo il nuovo stato desiderato dall'utente
+            if (copy_from_user(&new_state, (int __user *)arg, sizeof(int))) {
+                return -EFAULT;
+            }
+
+            // Aggiorniamo la variabile globale che controlla l'enforcement
+            global_monitor_state = (new_state != 0);
+            
+            printk(KERN_INFO "[Syscall_Throttling] Stato del monitor cambiato: %s\n", 
+                   global_monitor_state ? "ATTIVO" : "DISATTIVATO");
+            break;
+        }
+
         default:
             // Se il comando non corrisponde al Magic Number definito, restituiamo un errore
             return -ENOTTY; // Inappropriate ioctl for device
