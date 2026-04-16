@@ -8,6 +8,10 @@
 #include <linux/string.h>
 #include <linux/timer.h>
 #include <linux/jiffies.h>
+#include <linux/wait.h>
+#include <linux/atomic.h>
+#include <linux/list.h>
+#include <linux/spinlock.h>
 #include <asm/msr.h>
 #include "policy_engine.h"
 #include "registry_data.h" 
@@ -15,19 +19,34 @@
 extern int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls);
 extern void update_peak_delay(int syscall_num, unsigned long long delay_cycles, int victim_uid, const char *victim_comm);
 extern void update_thread_stats(int syscall_num, int current_blocked_now);
+extern void reset_all_counters(void);
+
+int global_monitor_state __read_mostly = 1; // 1 = ON, 0 = OFF
 
 // Gestione Safe Unloading
 atomic_t active_wrappers = ATOMIC_INIT(0);
 DECLARE_WAIT_QUEUE_HEAD(unload_waitqueue);
 
-// Struttura per i thread dormienti
-DECLARE_WAIT_QUEUE_HEAD(throttle_queue);
+// Statistiche
+static atomic_t total_blocked_threads = ATOMIC_INIT(0);
 
-// Orologio del modulo. Incrementato dal demone ogni secondo
+// Orologio del modulo
+static struct timer_list epoch_timer;
 atomic_t time_epoch = ATOMIC_INIT(0);
 
-static atomic_t total_blocked_threads = ATOMIC_INIT(0);
-int global_monitor_state __read_mostly = 1; // 1 = ON, 0 = OFF
+// Struttura privata allocata sullo STACK di ogni thread sospeso
+struct scth_waiter {
+    struct list_head list;
+    wait_queue_head_t wq;
+    int syscall_num;
+    uid_t uid;
+    char comm[TASK_COMM_LEN];
+    bool granted; // Il "Token" d'accesso
+};
+
+// Lock per proteggere la coda dai timer asincroni
+DEFINE_SPINLOCK(fifo_lock);
+LIST_HEAD(fifo_waiters);
 
 // Macro che legge il Time-Stamp Counter e l'ID del processore
 static inline unsigned long long read_rdtscp_strict(unsigned int *cpu_id) {
@@ -42,6 +61,7 @@ void enforce_syscall_policy(int syscall_num) {
     int max_calls;
     int is_monitored = 0;
 
+    // Ingresso nel modulo
     atomic_inc(&active_wrappers);
 
     if (!global_monitor_state) {
@@ -59,17 +79,18 @@ void enforce_syscall_policy(int syscall_num) {
     is_monitored = is_throttled((int)caller_uid, caller_comm, syscall_num, &max_calls);
     
     if (is_monitored) {
-        int sleep_epoch;
         unsigned long long tsc_start, tsc_end, delay_cycles;
         unsigned int cpu_start, cpu_end;
         int current_val;
         int wait_ret;
 
-        printk(KERN_WARNING "[Syscall_Throttling] BLOCCO! Processo %s (UID %u) ha superato il limite di %d. SOSPENSIONE...\n", 
-               caller_comm, caller_uid, max_calls);
-        
-        // Salviamo il tick attuale dell'orologio
-        sleep_epoch = atomic_read(&time_epoch);
+        struct scth_waiter waiter;
+        INIT_LIST_HEAD(&waiter.list);
+        init_waitqueue_head(&waiter.wq);
+        waiter.syscall_num = syscall_num;
+        waiter.uid = caller_uid;
+        strscpy(waiter.comm, caller_comm, TASK_COMM_LEN);
+        waiter.granted = false;
 
         // Cattura tempo inizio
         tsc_start = read_rdtscp_strict(&cpu_start);
@@ -80,15 +101,24 @@ void enforce_syscall_policy(int syscall_num) {
         // Aggiorniamo il picco nel database
         update_thread_stats(syscall_num, current_val);
         
+        spin_lock_bh(&fifo_lock);
+        list_add_tail(&waiter.list, &fifo_waiters);
+        spin_unlock_bh(&fifo_lock);
+
         // Congelamento fisico del thread nella Wait Queue
-        wait_event_interruptible(throttle_queue, atomic_read(&time_epoch) > sleep_epoch);
+        wait_ret = wait_event_interruptible(waiter.wq, waiter.granted || !global_monitor_state);
         if (wait_ret < 0) {
+            spin_lock_bh(&fifo_lock);
+            if (!waiter.granted) {
+                list_del_init(&waiter.list); 
+            }
+            spin_unlock_bh(&fifo_lock);
+            
             atomic_dec(&total_blocked_threads);
             if (atomic_dec_and_test(&active_wrappers)) {
                 wake_up(&unload_waitqueue);
             }
-            printk(KERN_INFO "[Syscall_Throttling] Syscall abortita (SIGINT) per %s. Ritiro pulito.\n", caller_comm);
-            return; 
+            return;
         }
 
         // RISVEGLIO: Decrementiamo il contatore
@@ -99,20 +129,7 @@ void enforce_syscall_policy(int syscall_num) {
 
         if (tsc_end > tsc_start) {
             delay_cycles = tsc_end - tsc_start;
-            
-            /* Se la CPU è cambiata durante il sonno (CPU Migration), lo notifichiamo 
-             * perché i registri TSC di Core diversi potrebbero avere un leggero offset.
-            */
-            if (cpu_start != cpu_end) {
-                printk(KERN_DEBUG "[Syscall_Throttling] Avviso: Migrazione CPU rilevata (Core %u -> Core %u)\n", 
-                       cpu_start, cpu_end);
-            }
-            
-            // Aggiorniamo il picco nel database
             update_peak_delay(syscall_num, delay_cycles, (int)caller_uid, caller_comm);
-            
-            printk(KERN_INFO "[Syscall_Throttling] RISVEGLIO %s. Ritardo: %llu cicli CPU.\n", 
-                   caller_comm, delay_cycles);
         }
 
     } 
@@ -123,51 +140,45 @@ void enforce_syscall_policy(int syscall_num) {
 }
 
 void wait_for_zero_wrappers(void) {
-    printk(KERN_INFO "[Syscall_Throttling] Attesa svuotamento hook (Safe Unloading)...\n");
-    // Dorme finché active_wrappers non è esattamente 0
     wait_event(unload_waitqueue, atomic_read(&active_wrappers) == 0);
-    printk(KERN_INFO "[Syscall_Throttling] Hook svuotato. Procedo allo scaricamento.\n");
 }
 
 /* ========================================================================= *
  * DEMONE DEL TEMPO (KERNEL TIMER IN SOFTIRQ)                                                *
  * ========================================================================= */
 
-static struct timer_list epoch_timer;
-extern void reset_all_counters(void); 
-
-/* Callback del Timer: Gira in contesto di Interrupt (Softirq).
- * ATTENZIONE: Non può dormire, non può usare lock bloccanti (mutex).
- */
 static void epoch_timer_callback(struct timer_list *t) {
-    // Resetta i contatori di tutte le policy (RCU/Spinlock safe)
-    reset_all_counters();
+    struct scth_waiter *w, *tmp;
 
-    // Avanza l'orologio globale (operazione atomica, safe)
+    // Resetta i contatori RCU
+    reset_all_counters();
     atomic_inc(&time_epoch);
 
-    // Sveglia i thread congelati (wake_up è safe in interrupt context)
-    wake_up_all(&throttle_queue);
+    // Scorriamo la fila ordinata (FIFO) e distribuiamo i permessi
+    spin_lock_bh(&fifo_lock);
+    list_for_each_entry_safe(w, tmp, &fifo_waiters, list) {
+        int dummy_max;
+        
+        // Chiediamo al DB se c'è un token. is_throttled farà l'incremento!
+        // Se restituisce 0, significa che la soglia MAX non è ancora stata sfondata
+        if (!is_throttled((int)w->uid, w->comm, w->syscall_num, &dummy_max)) {
+            w->granted = true;          // Diamo il pass
+            list_del_init(&w->list);    // Lo togliamo dalla coda
+            wake_up(&w->wq);            // Svegliamo SOLO lui (Niente Context Switch inutili)
+        }
+    }
+    spin_unlock_bh(&fifo_lock);
 
-    // Riprogramma il timer per scattare di nuovo tra esattamente 1 secondo
+    // Riprogrammiamo il timer
     mod_timer(&epoch_timer, jiffies + HZ);
 }
 
 int start_policy_engine(void) {
-    printk(KERN_INFO "[Syscall_Throttling] Avvio orologio di sistema (Kernel Timer in Softirq)...\n");
-    
-    // Inizializza la struttura del timer e collega la callback
     timer_setup(&epoch_timer, epoch_timer_callback, 0);
-    
-    // Innesca il primo scatto tra 1 secondo esatto (HZ jiffies)
     mod_timer(&epoch_timer, jiffies + HZ);
-    
     return 0;
 }
 
 void stop_policy_engine(void) {
-    printk(KERN_INFO "[Syscall_Throttling] Spegnimento orologio di sistema...\n");
-    
-    // del_timer_sync attende in sicurezza se la callback è in esecuzione su un altro core
     del_timer_sync(&epoch_timer);
 }

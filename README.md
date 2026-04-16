@@ -30,6 +30,7 @@ Se il volume di chiamate supera una soglia massima (MAX) configurabile, all'inte
 
 Il progetto è diviso in:
 - **Kernel Space (Ring 0):** Il motore principale. Implementa l'hooking della `sys_call_table` disabilitando le protezioni hardware (bit WP del registro CR0). 
+- **Motore di Throttling:** Utilizza un Kernel Timer asincrono in contesto Softirq per la gestione delle epoche temporali. Per evitare crolli di prestazioni sotto stress (problema del *Thundering Herd*), i thread sospesi vengono inseriti in Wait Queue private e gestiti tramite una coda **FIFO Strict**, garantendo un numero di *Context Switches* minimo e un rispetto della soglia MAX.
 - **User Space (Ring 3):** Un tool di amministrazione CLI che comunica con il kernel tramite un Character Device (`/dev/syscall_defender`) sfruttando comandi `ioctl` per l'inserimento o la rimozione delle policy a runtime.
 
 ## Struttura del Repository
