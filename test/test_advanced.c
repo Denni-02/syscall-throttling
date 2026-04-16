@@ -26,15 +26,15 @@ int main(int argc, char *argv[]) {
 
     // Reset
     printf("\n[*] FASE 2: Pausa di 1.5 secondi...\n");
-    printf("[*] Questo darà tempo al Kthread di azzerare i contatori nel Ring 0.\n");
+    printf("[*] Questo darà tempo al Kernel Timer (Softirq) di azzerare i contatori nel Ring 0.\n");
     usleep(1500000); 
 
     // Saturazione
-    printf("\n[*] FASE 3: Lancio 4 chiamate veloci. La quarta DEVE congelarsi.\n");
+    printf("\n[*] FASE 3: Lancio 4 chiamate veloci. Dalla terza in poi DEVONO congelarsi.\n");
     for (int i = 1; i <= 4; i++) {
         printf("[>] Chiamata %d...\n", i);
         syscall(target_syscall, NULL, 0);
-        printf("[+] Chiamata FASE 3 - Iterazione %d completata.\n", i);
+        printf("[+] Chiamata FASE 3 - Iterazione %d completata (Pass/Svegliato).\n", i);
     }
 
     printf("\n[*] --- TEST CONCLUSO ---\n");

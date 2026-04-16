@@ -17,16 +17,21 @@
 void enforce_syscall_policy(int syscall_num);
 
 /**
- * start_policy_engine() - Crea e avvia il demone del tempo (Kthread).
- * Return: 0 in caso di successo, un codice di errore negativo se fallisce.
+ * start_policy_engine() - Inizializza e avvia l'orologio di sistema (Kernel Timer in Softirq).
+ * Return: 0 in caso di successo.
 */
 int start_policy_engine(void);
 
 /**
- * stop_policy_engine() - Invia il segnale di terminazione al demone e attende
- * la sua chiusura sicura in fase di scaricamento del modulo.
+ * stop_policy_engine() - Arresta il timer di sistema in sicurezza.
+ * Utilizza del_timer_sync() per attendere la fine di eventuali callback in esecuzione.
 */
 void stop_policy_engine(void);
+
+/**
+ * wait_for_zero_wrappers() - Sospende l'unload finché i thread non escono dall'hook.
+*/
+void wait_for_zero_wrappers(void);
 
 extern int global_monitor_state;
 

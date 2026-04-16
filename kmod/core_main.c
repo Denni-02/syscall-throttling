@@ -59,6 +59,7 @@ static void __exit core_exit(void) {
 
     stop_policy_engine();
     cleanup_interceptor();
+    wait_for_zero_wrappers();
     cleanup_char_device();
     cleanup_registry();
 

@@ -6,8 +6,8 @@
 #include <linux/sched.h>
 #include <linux/cred.h>
 #include <linux/string.h>
-#include <linux/kthread.h>
-#include <linux/delay.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
 #include <asm/msr.h>
 #include "policy_engine.h"
 #include "registry_data.h" 
@@ -16,6 +16,10 @@ extern int is_throttled(int uid, const char *comm, int syscall_num, int *out_max
 extern void update_peak_delay(int syscall_num, unsigned long long delay_cycles, int victim_uid, const char *victim_comm);
 extern void update_thread_stats(int syscall_num, int current_blocked_now);
 
+// Gestione Safe Unloading
+atomic_t active_wrappers = ATOMIC_INIT(0);
+DECLARE_WAIT_QUEUE_HEAD(unload_waitqueue);
+
 // Struttura per i thread dormienti
 DECLARE_WAIT_QUEUE_HEAD(throttle_queue);
 
@@ -23,7 +27,7 @@ DECLARE_WAIT_QUEUE_HEAD(throttle_queue);
 atomic_t time_epoch = ATOMIC_INIT(0);
 
 static atomic_t total_blocked_threads = ATOMIC_INIT(0);
-int global_monitor_state = 1; // 1 = ON, 0 = OFF
+int global_monitor_state __read_mostly = 1; // 1 = ON, 0 = OFF
 
 // Macro che legge il Time-Stamp Counter e l'ID del processore
 static inline unsigned long long read_rdtscp_strict(unsigned int *cpu_id) {
@@ -38,16 +42,18 @@ void enforce_syscall_policy(int syscall_num) {
     int max_calls;
     int is_monitored = 0;
 
+    atomic_inc(&active_wrappers);
+
     if (!global_monitor_state) {
+        if (atomic_dec_and_test(&active_wrappers)) {
+            wake_up(&unload_waitqueue);
+        }
         return; 
     }
 
     // 1. Identificazione
     caller_uid = current_euid().val;
     get_task_comm(caller_comm, current);
-
-    printk(KERN_INFO "[Syscall_Throttling] Invocazione rilevata - Syscall: %d | UID: %u | Comm: %s\n",
-           syscall_num, caller_uid, caller_comm);
 
     // 2. Verifica
     is_monitored = is_throttled((int)caller_uid, caller_comm, syscall_num, &max_calls);
@@ -57,6 +63,7 @@ void enforce_syscall_policy(int syscall_num) {
         unsigned long long tsc_start, tsc_end, delay_cycles;
         unsigned int cpu_start, cpu_end;
         int current_val;
+        int wait_ret;
 
         printk(KERN_WARNING "[Syscall_Throttling] BLOCCO! Processo %s (UID %u) ha superato il limite di %d. SOSPENSIONE...\n", 
                caller_comm, caller_uid, max_calls);
@@ -75,8 +82,16 @@ void enforce_syscall_policy(int syscall_num) {
         
         // Congelamento fisico del thread nella Wait Queue
         wait_event_interruptible(throttle_queue, atomic_read(&time_epoch) > sleep_epoch);
-        
-        /* RISVEGLIO: Decrementiamo il contatore */
+        if (wait_ret < 0) {
+            atomic_dec(&total_blocked_threads);
+            if (atomic_dec_and_test(&active_wrappers)) {
+                wake_up(&unload_waitqueue);
+            }
+            printk(KERN_INFO "[Syscall_Throttling] Syscall abortita (SIGINT) per %s. Ritiro pulito.\n", caller_comm);
+            return; 
+        }
+
+        // RISVEGLIO: Decrementiamo il contatore
         atomic_dec(&total_blocked_threads);
 
         // Cattura tempo fine
@@ -100,62 +115,59 @@ void enforce_syscall_policy(int syscall_num) {
                    caller_comm, delay_cycles);
         }
 
-    } else {
-        printk(KERN_INFO "[Syscall_Throttling] PASS: Invocazione %d consentita.\n", syscall_num);
+    } 
+
+    if (atomic_dec_and_test(&active_wrappers)) {
+        wake_up(&unload_waitqueue);
     }
+}
+
+void wait_for_zero_wrappers(void) {
+    printk(KERN_INFO "[Syscall_Throttling] Attesa svuotamento hook (Safe Unloading)...\n");
+    // Dorme finché active_wrappers non è esattamente 0
+    wait_event(unload_waitqueue, atomic_read(&active_wrappers) == 0);
+    printk(KERN_INFO "[Syscall_Throttling] Hook svuotato. Procedo allo scaricamento.\n");
 }
 
 /* ========================================================================= *
- * DEMONE DEL TEMPO (KTHREAD)                                                *
+ * DEMONE DEL TEMPO (KERNEL TIMER IN SOFTIRQ)                                                *
  * ========================================================================= */
 
-static struct task_struct *daemon_task = NULL;
+static struct timer_list epoch_timer;
 extern void reset_all_counters(void); 
 
-// Loop infinito del demone in background 
-static int daemon_loop(void *data) {
-    printk(KERN_INFO "[Syscall_Throttling] Demone del tempo avviato (PID: %d)\n", current->pid);
+/* Callback del Timer: Gira in contesto di Interrupt (Softirq).
+ * ATTENZIONE: Non può dormire, non può usare lock bloccanti (mutex).
+ */
+static void epoch_timer_callback(struct timer_list *t) {
+    // Resetta i contatori di tutte le policy (RCU/Spinlock safe)
+    reset_all_counters();
 
-    // Il demone gira finché non riceve il segnale di stop allo scaricamento del modulo
-    while (!kthread_should_stop()) {
-        
-        set_current_state(TASK_INTERRUPTIBLE);
-        if (kthread_should_stop()) {
-            set_current_state(TASK_RUNNING);
-            break;
-        }
-        schedule_timeout(HZ); // Dorme per 1 secondo
+    // Avanza l'orologio globale (operazione atomica, safe)
+    atomic_inc(&time_epoch);
 
-        /* --- RISVEGLIO --- */
+    // Sveglia i thread congelati (wake_up è safe in interrupt context)
+    wake_up_all(&throttle_queue);
 
-        // Resetta i contatori di tutte le policy 
-        reset_all_counters();
-
-        // Avanza l'orologio globale
-        atomic_inc(&time_epoch);
-
-        // Sveglia TUTTI i thread congelati nella Wait Queue 
-        wake_up_all(&throttle_queue);
-    }
-
-    printk(KERN_INFO "[Syscall_Throttling] Demone del tempo arrestato in sicurezza.\n");
-    return 0;
+    // Riprogramma il timer per scattare di nuovo tra esattamente 1 secondo
+    mod_timer(&epoch_timer, jiffies + HZ);
 }
 
 int start_policy_engine(void) {
-    // Crea e avvia il thread immediatamente
-    daemon_task = kthread_run(daemon_loop, NULL, "syscall_daemon");
-    if (IS_ERR(daemon_task)) {
-        printk(KERN_ERR "[Syscall_Throttling] Errore critico: impossibile avviare il demone!\n");
-        return PTR_ERR(daemon_task);
-    }
+    printk(KERN_INFO "[Syscall_Throttling] Avvio orologio di sistema (Kernel Timer in Softirq)...\n");
+    
+    // Inizializza la struttura del timer e collega la callback
+    timer_setup(&epoch_timer, epoch_timer_callback, 0);
+    
+    // Innesca il primo scatto tra 1 secondo esatto (HZ jiffies)
+    mod_timer(&epoch_timer, jiffies + HZ);
+    
     return 0;
 }
 
 void stop_policy_engine(void) {
-    if (daemon_task) {
-        // Invia il segnale di stop e attende che il demone esca dal loop
-        kthread_stop(daemon_task);
-        daemon_task = NULL;
-    }
+    printk(KERN_INFO "[Syscall_Throttling] Spegnimento orologio di sistema...\n");
+    
+    // del_timer_sync attende in sicurezza se la callback è in esecuzione su un altro core
+    del_timer_sync(&epoch_timer);
 }

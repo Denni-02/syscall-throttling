@@ -35,9 +35,9 @@ Il progetto è diviso in:
 ## Struttura del Repository
 
 - `kmod/`: Codice sorgente del Modulo Kernel (Ring 0).
-- `userspace/`: Tool da riga di comando per l'amministrazione del demone (Ring 3).
+- `userspace/`: Tool da riga di comando per l'amministrazione del Reference Monitor (Ring 3).
 - `include/`: File header e API condivise tra User Space e Kernel Space.
-- `scripts/`: Script bash per l'automazione del build, deploy e teardown.
+- `scripts/`: Script bash per automazioni di testing avanzato e stress-test.
 
 ---
 
@@ -65,32 +65,32 @@ Il modulo è stato realizzato per permettere l'abilitazione di differenti modali
 
 ## Comandi di deploy
 
-Il sistema di build riconosce le variabili d'ambiente SYNC e DISCOVERY. Se non specificate, verranno utilizzati i default (rcu e kprobes).
+Il sistema di build riconosce le variabili d'ambiente `SYNC` e `DISCOVERY`. Se non specificate, verranno utilizzati i default (`rcu` e `kprobes`). 
 
 **Compilazione di default (RCU + Kprobes):**
 
 ```bash
-./scripts/deploy.sh
+make reload
 ```
 
 **Compilazione variando solo l'algoritmo di Discovery (RCU + Scanner):**
 ```bash
-DISCOVERY=scanner ./scripts/deploy.sh
+DISCOVERY=scanner make reload
 ```
 **Compilazione variando solo il modello di Sincronizzazione (Spinlock + Kprobes):**
 ```bash
-SYNC=spinlock ./scripts/deploy.sh
+SYNC=spinlock make reload
 ```
 
 **Compilazione alterando entrambi i design pattern (Spinlock + Scanner):**
 ```bash
-SYNC=spinlock DISCOVERY=scanner ./scripts/deploy.sh
+SYNC=spinlock DISCOVERY=scanner make reload
 ```
 
-Per rimuovere il modulo, liberare la memoria (Garbage Collection) e pulire l'ambiente:
+Per scaricare il modulo in sicurezza (attendendo l'uscita dei thread grazie al Safe Unloading), rimuovere il device node e pulire i file di compilazione:
 
 ```bash
-./scripts/teardown.sh
+make unload
 ```
 
 ---
@@ -99,7 +99,7 @@ Per rimuovere il modulo, liberare la memoria (Garbage Collection) e pulire l'amb
 
 L'interazione con il modulo Ring 0 avviene tramite un Character Device generato dinamicamente (`/dev/syscall_defender`) utilizzando la system call `ioctl`. 
 
-È stato sviluppato un tool C dedicato nello User Space (`userspace/cli_tool.c`) per l'amministrazione delle policy di throttling, l'estrazione delle statistiche e il controllo globale del demone.
+È stato sviluppato un tool C dedicato nello User Space (`userspace/cli_tool.c`) per l'amministrazione delle policy di throttling, l'estrazione delle statistiche e il controllo globale del motore di throttling (guidato da Kernel Timers in Softirq).
 
 **Sicurezza (Effective UID):** Come richiesto dalle specifiche, l'accesso al device e la configurazione delle regole richiedono rigorosamente i privilegi di amministratore. Il modulo verifica le credenziali del chiamante (`current_euid()`). Qualsiasi tentativo di accesso da parte di utenti non privilegiati verrà intercettato e respinto con errore `-EPERM` (Operation not permitted).
 

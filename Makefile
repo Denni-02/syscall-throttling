@@ -39,3 +39,22 @@ all:
 # Target per la pulizia dei file temporanei
 clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
+
+load: all
+	@echo "\n[+] Caricamento modulo nel kernel..."
+	sudo insmod syscall_defender.ko
+	@echo "[+] Creazione dinamica del device node..."
+	sudo rm -f /dev/syscall_defender
+	sudo mknod /dev/syscall_defender c $$(awk '$$2=="syscall_defender" {print $$1}' /proc/devices) 0
+	sudo chmod 666 /dev/syscall_defender
+	@echo "[+] Modulo pronto all'uso!"
+
+unload:
+	@echo "\n[+] Rimozione modulo..."
+	-sudo rmmod syscall_defender 2>/dev/null || true
+	-sudo rm -f /dev/syscall_defender
+	@echo "[+] Pulizia dei file di build..."
+	$(MAKE) -C $(KDIR) M=$(PWD) clean
+
+reload: unload load
+	@echo "\n[+] Reload completato con successo!"
