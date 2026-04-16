@@ -179,6 +179,25 @@ int start_policy_engine(void) {
     return 0;
 }
 
+void flush_all_waiters(void) {
+    struct scth_waiter *w, *tmp;
+    spin_lock_bh(&fifo_lock);
+    list_for_each_entry_safe(w, tmp, &fifo_waiters, list) {
+        w->granted = true; // Sblocca la condizione
+        list_del_init(&w->list);
+        wake_up(&w->wq);    // Sveglia il thread fisico
+    }
+    spin_unlock_bh(&fifo_lock);
+}
+
+void set_global_monitor_state(int state) {
+    global_monitor_state = state;
+    if (state == 0) {
+        flush_all_waiters(); // Notifica immediata a tutti i thread in coda
+    }
+}
+
 void stop_policy_engine(void) {
+    set_global_monitor_state(0);
     del_timer_sync(&epoch_timer);
 }

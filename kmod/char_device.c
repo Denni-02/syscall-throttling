@@ -17,6 +17,7 @@
 static int major_number;
 
 extern int global_monitor_state;
+extern void set_global_monitor_state(int state);
 extern int get_rule_stats(int syscall_num, struct stats_payload *out_stats);
 
 /**
@@ -90,7 +91,7 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             }
 
             // Aggiorniamo la variabile globale che controlla l'enforcement
-            global_monitor_state = (new_state != 0);
+            set_global_monitor_state(new_state != 0);
             
             printk(KERN_INFO "[Syscall_Throttling] Stato del monitor cambiato: %s\n", 
                    global_monitor_state ? "ATTIVO" : "DISATTIVATO");
