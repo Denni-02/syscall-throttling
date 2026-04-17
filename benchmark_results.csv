@@ -1,0 +1,10 @@
+Syscall,Configurazione,Baseline_ns,Bypass_ns,Overhead_ns,Context_Switches
+39,RCU_Kprobes,629,572,0,206
+39,Spinlock_Kprobes,512,483,0,212
+39,RCU_Scanner,472,569,97,198
+257,RCU_Kprobes,3168,3026,0,205
+257,Spinlock_Kprobes,3133,3037,0,212
+257,RCU_Scanner,3007,3041,34,214
+1,RCU_Kprobes,668,776,108,204
+1,Spinlock_Kprobes,600,607,7,213
+1,RCU_Scanner,768,571,0,206
