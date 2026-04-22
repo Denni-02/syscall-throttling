@@ -1,0 +1,139 @@
+[36m=========================================================[0m
+[36m QA TEST SUITE: ISOLAMENTO E PRIVILEGE SEPARATION[0m
+[36m=========================================================[0m
+[*] Compilazione eseguibile (test_burst.c)...
+[*] Ricaricamento Modulo Pulito...
+[*] Configurazione Regola: Syscall=39, MAX=0 (Deny All), UID Target=65534 (nobody)
+
+[*] Verifica Regola nel Database:
+
+======================================================================
+ REGOLE DI THROTTLING ATTIVE (1/50)
+======================================================================
+ ID   | SYSCALL  | MAX/s    | UID      | PROGRAMMA       
+----------------------------------------------------------------------
+ [01] | 39       | 0        | 65534    | TUTTI           
+======================================================================
+
+---------------------------------------------------------
+
+[33m>>> SCENARIO 1: Esecuzione come utente non privilegiato (nobody) <<<[0m
+[>] Il processo dovrebbe essere bloccato istantaneamente (Timeout di sicurezza: 2s)...
+[32m[+] SUCCESSO: Il processo è stato congelato nel Ring 0! L'utente è bloccato.[0m
+
+[33m>>> SCENARIO 2: Esecuzione come amministratore (root) <<<[0m
+[>] Il root bypassa il filtro UID. Il test deve completare le sue 100 chiamate istantaneamente...
+
+[36m=====================================================[0m
+[36m [TEST SUITE] VALIDAZIONE BURST & CORNER CASES (Syscall 39)[0m
+[36m=====================================================[0m
+
+[*] Inizio raffica di 100 chiamate in un singolo ciclo FOR...
+[*] Se la policy e' MAX=0, questo processo DEVE congelarsi immediatamente.
+
+[33m    [>] Chiamata 1 elaborata.[0m
+[33m    [>] Chiamata 2 elaborata.[0m
+[33m    [>] Chiamata 3 elaborata.[0m
+[33m    [>] Chiamata 4 elaborata.[0m
+[33m    [>] Chiamata 5 elaborata.[0m
+[33m    [>] Chiamata 6 elaborata.[0m
+[33m    [>] Chiamata 7 elaborata.[0m
+[33m    [>] Chiamata 8 elaborata.[0m
+[33m    [>] Chiamata 9 elaborata.[0m
+[33m    [>] Chiamata 10 elaborata.[0m
+[33m    [>] Chiamata 11 elaborata.[0m
+[33m    [>] Chiamata 12 elaborata.[0m
+[33m    [>] Chiamata 13 elaborata.[0m
+[33m    [>] Chiamata 14 elaborata.[0m
+[33m    [>] Chiamata 15 elaborata.[0m
+[33m    [>] Chiamata 16 elaborata.[0m
+[33m    [>] Chiamata 17 elaborata.[0m
+[33m    [>] Chiamata 18 elaborata.[0m
+[33m    [>] Chiamata 19 elaborata.[0m
+[33m    [>] Chiamata 20 elaborata.[0m
+[33m    [>] Chiamata 21 elaborata.[0m
+[33m    [>] Chiamata 22 elaborata.[0m
+[33m    [>] Chiamata 23 elaborata.[0m
+[33m    [>] Chiamata 24 elaborata.[0m
+[33m    [>] Chiamata 25 elaborata.[0m
+[33m    [>] Chiamata 26 elaborata.[0m
+[33m    [>] Chiamata 27 elaborata.[0m
+[33m    [>] Chiamata 28 elaborata.[0m
+[33m    [>] Chiamata 29 elaborata.[0m
+[33m    [>] Chiamata 30 elaborata.[0m
+[33m    [>] Chiamata 31 elaborata.[0m
+[33m    [>] Chiamata 32 elaborata.[0m
+[33m    [>] Chiamata 33 elaborata.[0m
+[33m    [>] Chiamata 34 elaborata.[0m
+[33m    [>] Chiamata 35 elaborata.[0m
+[33m    [>] Chiamata 36 elaborata.[0m
+[33m    [>] Chiamata 37 elaborata.[0m
+[33m    [>] Chiamata 38 elaborata.[0m
+[33m    [>] Chiamata 39 elaborata.[0m
+[33m    [>] Chiamata 40 elaborata.[0m
+[33m    [>] Chiamata 41 elaborata.[0m
+[33m    [>] Chiamata 42 elaborata.[0m
+[33m    [>] Chiamata 43 elaborata.[0m
+[33m    [>] Chiamata 44 elaborata.[0m
+[33m    [>] Chiamata 45 elaborata.[0m
+[33m    [>] Chiamata 46 elaborata.[0m
+[33m    [>] Chiamata 47 elaborata.[0m
+[33m    [>] Chiamata 48 elaborata.[0m
+[33m    [>] Chiamata 49 elaborata.[0m
+[33m    [>] Chiamata 50 elaborata.[0m
+[33m    [>] Chiamata 51 elaborata.[0m
+[33m    [>] Chiamata 52 elaborata.[0m
+[33m    [>] Chiamata 53 elaborata.[0m
+[33m    [>] Chiamata 54 elaborata.[0m
+[33m    [>] Chiamata 55 elaborata.[0m
+[33m    [>] Chiamata 56 elaborata.[0m
+[33m    [>] Chiamata 57 elaborata.[0m
+[33m    [>] Chiamata 58 elaborata.[0m
+[33m    [>] Chiamata 59 elaborata.[0m
+[33m    [>] Chiamata 60 elaborata.[0m
+[33m    [>] Chiamata 61 elaborata.[0m
+[33m    [>] Chiamata 62 elaborata.[0m
+[33m    [>] Chiamata 63 elaborata.[0m
+[33m    [>] Chiamata 64 elaborata.[0m
+[33m    [>] Chiamata 65 elaborata.[0m
+[33m    [>] Chiamata 66 elaborata.[0m
+[33m    [>] Chiamata 67 elaborata.[0m
+[33m    [>] Chiamata 68 elaborata.[0m
+[33m    [>] Chiamata 69 elaborata.[0m
+[33m    [>] Chiamata 70 elaborata.[0m
+[33m    [>] Chiamata 71 elaborata.[0m
+[33m    [>] Chiamata 72 elaborata.[0m
+[33m    [>] Chiamata 73 elaborata.[0m
+[33m    [>] Chiamata 74 elaborata.[0m
+[33m    [>] Chiamata 75 elaborata.[0m
+[33m    [>] Chiamata 76 elaborata.[0m
+[33m    [>] Chiamata 77 elaborata.[0m
+[33m    [>] Chiamata 78 elaborata.[0m
+[33m    [>] Chiamata 79 elaborata.[0m
+[33m    [>] Chiamata 80 elaborata.[0m
+[33m    [>] Chiamata 81 elaborata.[0m
+[33m    [>] Chiamata 82 elaborata.[0m
+[33m    [>] Chiamata 83 elaborata.[0m
+[33m    [>] Chiamata 84 elaborata.[0m
+[33m    [>] Chiamata 85 elaborata.[0m
+[33m    [>] Chiamata 86 elaborata.[0m
+[33m    [>] Chiamata 87 elaborata.[0m
+[33m    [>] Chiamata 88 elaborata.[0m
+[33m    [>] Chiamata 89 elaborata.[0m
+[33m    [>] Chiamata 90 elaborata.[0m
+[33m    [>] Chiamata 91 elaborata.[0m
+[33m    [>] Chiamata 92 elaborata.[0m
+[33m    [>] Chiamata 93 elaborata.[0m
+[33m    [>] Chiamata 94 elaborata.[0m
+[33m    [>] Chiamata 95 elaborata.[0m
+[33m    [>] Chiamata 96 elaborata.[0m
+[33m    [>] Chiamata 97 elaborata.[0m
+[33m    [>] Chiamata 98 elaborata.[0m
+[33m    [>] Chiamata 99 elaborata.[0m
+[33m    [>] Chiamata 100 elaborata.[0m
+
+[32m[+] Raffica completata o sbloccata forzatamente.[0m
+
+
+[32m[+] TEST DI ISOLAMENTO COMPLETATO![0m
+[36m=========================================================[0m

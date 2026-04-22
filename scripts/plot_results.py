@@ -38,7 +38,7 @@ plt.bar(x, spin_k_over, width, label='Spinlock + Kprobes', color='#d62728', edge
 plt.bar(x + width, rcu_s_over, width, label='RCU + Scanner', color='#1f77b4', edgecolor='black')
 
 plt.ylabel('Overhead Latenza (Nanosecondi)', fontsize=12)
-plt.title('Costo di Intercettazione sul Fast-Path (Latenza Aggiuntiva)', fontsize=14, fontweight='bold')
+plt.title('Costo di Intercettazione (Latenza Aggiuntiva)', fontsize=14, fontweight='bold')
 plt.xticks(x, x_labels, fontsize=11)
 plt.legend()
 plt.grid(axis='y', linestyle='--', alpha=0.7)
@@ -60,8 +60,8 @@ plt.figure(figsize=(10, 6))
 rcu_k_cs = rcu_kprobes['Context_Switches'].tolist()
 spin_k_cs = spin_kprobes['Context_Switches'].tolist()
 
-plt.bar(x - width/2, rcu_k_cs, width, label='RCU (Lock-Free)', color='#9467bd', edgecolor='black')
-plt.bar(x + width/2, spin_k_cs, width, label='Spinlock (Blocking)', color='#ff7f0e', edgecolor='black')
+plt.bar(x - width/2, rcu_k_cs, width, label='RCU', color='#9467bd', edgecolor='black')
+plt.bar(x + width/2, spin_k_cs, width, label='Spinlock', color='#ff7f0e', edgecolor='black')
 
 # Linea teorica perfetta (200 chiamate bloccate = 200 context switches ideali)
 plt.axhline(y=200, color='red', linestyle='--', linewidth=2, label='Ideale Teorico (Strict FIFO)')

@@ -1,0 +1,38 @@
+[36m=========================================================[0m
+[36m QA TEST SUITE: TIMER RESET E LOGICA[0m
+[36m=========================================================[0m
+[*] Compilazione test_logic...
+[*] Ricaricamento Modulo Pulito...
+[*] Configurazione Regola: Syscall=39 (getpid), MAX=3, Target=test_logic
+[*] Verifica Regola nel Database:
+
+======================================================================
+ REGOLE DI THROTTLING ATTIVE (1/50)
+======================================================================
+ ID   | SYSCALL  | MAX/s    | UID      | PROGRAMMA       
+----------------------------------------------------------------------
+ [01] | 39       | 3        | -1       | test_logic      
+======================================================================
+
+---------------------------------------------------------
+
+[36m=====================================================[0m
+[36m [TEST SUITE] VALIDAZIONE LOGICA TEMPORALE (Syscall 39)[0m
+[36m=====================================================[0m
+
+[*] FASE 1: Lancio 2 chiamate veloci (Sotto Soglia MAX=3)...
+    [32m[+] Chiamata 1: FAST-PATH   (0 ms)[0m
+    [32m[+] Chiamata 2: FAST-PATH   (0 ms)[0m
+
+[36m[*] FASE 2: Pausa 1.5s (Attesa Reset Epoca da SoftIRQ)...[0m
+
+[*] FASE 3: Lancio 4 chiamate veloci (Superamento Soglia)...
+    [32m[+] Chiamata 1: FAST-PATH   (0 ms)[0m
+    [32m[+] Chiamata 2: FAST-PATH   (0 ms)[0m
+    [32m[+] Chiamata 3: FAST-PATH   (0 ms)[0m
+    [33m[~] Chiamata 4: THROTTLING! (174 ms)[0m
+
+[36m=====================================================[0m
+[36m TEST CONCLUSO[0m
+
+[32m[+] TEST FUNZIONALE COMPLETATO CON SUCCESSO![0m
