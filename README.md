@@ -388,9 +388,7 @@ QA TEST SUITE: TIMER RESET E LOGICA
 
 ## 9. Debugging e Log del Kernel
 
-Le operazioni di livello Kernel (attivazioni regole, calcoli hardware, intercettazioni) non vengono stampate sullo standard output dell'utente, ma scritte nel ring buffer del sistema operativo.
-
-Per visualizzare i log del modulo in tempo reale:
+Per visualizzare i log del modulo:
 
 ```bash
 sudo dmesg -wH | grep Syscall_Throttling
