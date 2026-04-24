@@ -273,8 +273,6 @@ QA TEST SUITE: TIMER RESET E LOGICA
 
 ```
 
-![Test Logica](plots/test_logic.png)
-
 ### Area di Test 2: Isolamento
 - **Obiettivo:** Dimostrare che l'hook in Ring 0 sa leggere le credenziali del processo chiamante (current_euid()) e applicare i filtri identitari in modo corretto.
 - **Esecuzione:** `run_test_isolation.sh` isola un utente non privilegiato (nobody, UID 65534) applicandogli una policy di blocco totale (MAX=0). Lo script utilizza il programma `test_burst.c`, il quale consiste in un  ciclo for da 100 iterazioni di system call prive di interruzioni.
@@ -283,8 +281,69 @@ QA TEST SUITE: TIMER RESET E LOGICA
 
 **Log di Validazione:**
 
-![Test Isolamento](plots/test_isolation1.png)
-![Test Isolamento](plots/test_isolation2.png)
+```text
+=====================================================================================================
+ QA TEST SUITE: ISOLAMENTO E PRIVILEGE SEPARATION
+=====================================================================================================
+[*] Compilazione eseguibile (test_burst.c)...
+[*] Ricaricamento Modulo Pulito...
+[*] Configurazione Regola: Syscall=39, MAX=0 (Deny All), UID Target=65534 (nobody)
+
+[*] Verifica Regola nel Database:
+
+====================================================
+ REGOLE DI THROTTLING ATTIVE (1/50)
+====================================================
+ ID   | SYSCALL  | MAX/s    | UID      | PROGRAMMA       
+----------------------------------------------------
+ [01] | 39       | 0        | 65534    | TUTTI           
+====================================================
+
+
+>>> SCENARIO 1: Esecuzione come utente non privilegiato (nobody) <<<
+[>] Il processo dovrebbe essere bloccato istantaneamente (Timeout di sicurezza: 2s)...
+[+] SUCCESSO: Il processo è stato congelato nel Ring 0! L'utente è bloccato.
+
+>>> SCENARIO 2: Esecuzione come amministratore (root) <<<
+[>] Il root bypassa il filtro UID. Il test deve completare le sue 100 chiamate istantaneamente...
+
+============================================================
+ [TEST SUITE] VALIDAZIONE BURST & CORNER CASES (Syscall 39)
+============================================================
+
+[*] Inizio raffica di 100 chiamate in un singolo ciclo FOR...
+[*] Se la policy e' MAX=0, questo processo DEVE congelarsi immediatamente.
+
+    [>] Chiamata 1 elaborata.
+    [>] Chiamata 2 elaborata.
+    [>] Chiamata 3 elaborata.
+    [>] Chiamata 4 elaborata.
+    [>] Chiamata 5 elaborata.
+    [>] Chiamata 6 elaborata.
+    [>] Chiamata 7 elaborata.
+    [>] Chiamata 8 elaborata.
+    [>] Chiamata 9 elaborata.
+    [>] Chiamata 10 elaborata.
+    ...
+    [>] Chiamata 90 elaborata.
+    [>] Chiamata 91 elaborata.
+    [>] Chiamata 92 elaborata.
+    [>] Chiamata 93 elaborata.
+    [>] Chiamata 94 elaborata.
+    [>] Chiamata 95 elaborata.
+    [>] Chiamata 96 elaborata.
+    [>] Chiamata 97 elaborata.
+    [>] Chiamata 98 elaborata.
+    [>] Chiamata 99 elaborata.
+    [>] Chiamata 100 elaborata.
+
+[+] Raffica completata o sbloccata forzatamente.
+
+=====================================================================================================
+[+] TEST DI ISOLAMENTO COMPLETATO!
+=====================================================================================================
+
+```
 
 ### Area di Test 3: Corner Case
 - **Obiettivo:** Spegnere a caldo il monitor o rimuovere il driver dalla RAM mentre ci sono decine di thread bloccati in Ring 0 genera tipicamente un Kernel Panic (Page Fault su memoria non mappata). Vediamo come reagisce il nostro sistema.
@@ -294,10 +353,35 @@ QA TEST SUITE: TIMER RESET E LOGICA
 
 **Log di Validazione:**
 
-![Test Isolamento](plots/test_corners.png)
-
 ```text
-fff
+======================================================================================================
+ QA TEST SUITE: CORNER CASES E ROBUSTEZZA
+======================================================================================================
+[*] Compilazione eseguibili di test...
+[*] Ricaricamento Modulo Pulito...
+
+>>> CASE 1: SOGLIA MAX=0 (Deny All Isolato) <<<
+[>] Impostazione regola letale su syscall 39 per l'utente 'nobody'...
+[+] SUCCESSO: La policy 'Deny All' congela i processi istantaneamente senza crash.
+
+>>> CASE 2: HOT-SWAP (Disattivazione sotto carico) <<<
+[>] Riavvio modulo e impostazione regola MAX=1...
+[>] Lancio test_burst in background (processo destinato a bloccarsi)...
+[>] L'amministratore disattiva improvvisamente il monitor (-d)...
+[>] Attesa risoluzione processo in background...
+[+] SUCCESSO: Il processo è stato sbloccato ed espulso dal kernel in sicurezza.
+
+>>> CASE 3: SAFE UNLOADING (rmmod sotto attacco) <<<
+[>] Riavvio modulo e impostazione regola MAX=5...
+[>] Lancio 20 thread (bench_stress) in background...
+[>] L'amministratore forza la rimozione del modulo (make unload)...
+[+] Modulo rimosso dalla memoria con successo.
+[>] Verifica sopravvivenza del sistema operativo...
+[+] SUCCESSO: Nessun Kernel Panic. Lo svuotamento della Wait Queue (wake_up_all) ha funzionato.
+
+======================================================================================================
+ QA COMPLETATA: SISTEMA RESISTENTE AI CASI PARTICOLARI 
+======================================================================================================
 ```
 
 ---
