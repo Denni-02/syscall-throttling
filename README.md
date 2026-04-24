@@ -214,7 +214,7 @@ Il dato più critico della stabilità di un kernel non è il tempo speso a calco
 | **write (1)** | Spinlock + Kprobes | 20 | 213 |
 | **write (1)** | RCU + Scanner | 20 | 206 |
 
-![Analisi Context Switches](plots/context_switched_chart.png)
+![Analisi Context Switches](plots/context_switches_chart.png)
 
 **Perché esattamente ~200?** Questo numero certifica il successo dell'architettura e la risoluzione del problema del *Thundering Herd*. Poiché lo stress-test prevede 20 thread che eseguono 10 chiamate ciascuno, il modulo deve smaltire in totale 200 chiamate bloccanti. Ad ogni tick del timer (1 secondo), la funzione in contesto *SoftIRQ* scorre la lista e invoca la `wake_up()` esclusivamente sul numero esatto di thread previsti dalla policy. I thread in eccesso rimangono dormienti, non toccano la CPU, non consumano RAM e non generano lock contention. Piccole variazioni possono essere dovute all'addormentamento iniziale (quando i 20 thread entrano nel kernel) e all'eventuale rumore di fondo di demoni del sistema operativo
 
@@ -232,6 +232,46 @@ Per garantire che il modulo sia privo di vulnerabilità o bug fatali (come i Ker
     3. Esegue una raffica di 4 chiamate consecutive misurando quale di queste subisce latenza.
 
 **Log di Validazione:**
+
+```text
+=============================================================================
+QA TEST SUITE: TIMER RESET E LOGICA
+=============================================================================
+
+[*] Compilazione test_logic...
+[*] Ricaricamento Modulo Pulito...
+[*] Configurazione Regola: Syscall=39 (getpid), MAX=3, Target=test_logic
+[*] Verifica Regola nel Database:
+
+=====================================================
+ REGOLE DI THROTTLING ATTIVE (1/50)
+=====================================================
+ ID   | SYSCALL  | MAX/s    | UID      | PROGRAMMA       
+-----------------------------------------------------
+ [01] | 39       | 3        | -1       | test_logic      
+=====================================================
+
+======================================================
+[TEST SUITE] VALIDAZIONE LOGICA TEMPORALE (Syscall 39)
+======================================================
+
+[*] FASE 1: Lancio 2 chiamate veloci (Sotto Soglia MAX=3)...
+    [+] Chiamata 1: FAST-PATH   (0 ms)
+    [+] Chiamata 2: FAST-PATH   (0 ms)
+
+[*] FASE 2: Pausa 1.5s (Attesa Reset Epoca da SoftIRQ)...
+
+[*] FASE 3: Lancio 4 chiamate veloci (Superamento Soglia)...
+    [+] Chiamata 1: FAST-PATH   (0 ms)
+    [+] Chiamata 2: FAST-PATH   (0 ms)
+    [+] Chiamata 3: FAST-PATH   (0 ms)
+    [~] Chiamata 4: THROTTLING! (174 ms)
+
+=============================================================================
+[+] TEST FUNZIONALE COMPLETATO CON SUCCESSO!
+=============================================================================
+
+```
 
 ![Test Logica](plots/test_logic.png)
 
