@@ -13,8 +13,9 @@
 5. [Modalità di Compilazione e Design Pattern](#modalità-di-compilazione-e-design-pattern)
 6. [Utilizzo e Configurazione (CLI Tool)](#utilizzo-e-configurazione-cli-tool)
 7. [Analisi delle Prestazioni (Benchmark)](#analisi-delle-prestazioni-benchmark)
-8. [Test di Validazione](#test-di-validazione)
-9. [Debugging e Log del Kernel](#debugging-e-log-del-kernel)
+8. [Analisi di Scalabilità](#analisi-di-scalabilità)
+9. [Test di Validazione](#test-di-validazione)
+10. [Debugging e Log del Kernel](#debugging-e-log-del-kernel)
 
 ---
 
@@ -220,7 +221,27 @@ Il dato più critico della stabilità di un kernel non è il tempo speso a calco
 
 ---
 
-## 8. Test di Validazione
+## 8. Analisi di Scalabilità
+
+Per validare la scelta architetturale del meccanismo **Read-Copy-Update (RCU)** rispetto a un tradizionale **Spinlock Globale** è stato condotto un test di stress mirato a misurare la *Lock Contention* in un ambiente multi-core (4 vCPU).
+
+**Metodologia del Test:** Il primo test ha previsto **20 run** consecutive, in cui **8 thread** hanno generato raffiche da **15.000 chiamate** a vuoto (`getpid`), il tutto con **20 regole attive**.
+
+**Risultati dell'Esperimento:**
+![Box Plot RCU vs Spinlock](plots/heavy_boxplot1.png.png)
+
+**Metodologia del Test:** Il primo test ha previsto **20 run** consecutive, in cui **20 thread** hanno generato raffiche da **1.000 chiamate** a vuoto (`getpid`), il tutto con **50 regole attive**.
+
+**Risultati dell'Esperimento:**
+![Box Plot RCU vs Spinlock](plots/heavy_boxplot2.png.png)
+
+**Conclusioni Architetturali:**
+1. **Collasso dello Spinlock:** Sotto un carico modesto, lo Spinlock globale costringe i core ad un'attesa attiva (*busy-waiting*), nel primo test addirittura raddoppiando (+100%) il tempo di attraversamento del Ring 0. Spingendo ulteriormente il parametro di carico durante i test esplorativi, lo Spinlock ha ripetutamente innescato una condizione di *Deadlock*, costringendo a riavviare la VM.
+2. **Vittoria di RCU:** Il meccanismo RCU scala in modo lineare. Consentendo letture concorrenti *lock-free*, tutti i core della CPU attraversano la sezione critica in totale parallelismo.
+
+---
+
+## 9. Test di Validazione
 
 Per garantire che il modulo sia privo di vulnerabilità o bug fatali (come i Kernel Panic), l'infrastruttura è stata validata attraverso tre aree di test principali.
 
@@ -386,7 +407,7 @@ QA TEST SUITE: TIMER RESET E LOGICA
 
 ---
 
-## 9. Debugging e Log del Kernel
+## 10. Debugging e Log del Kernel
 
 Per visualizzare i log del modulo:
 
