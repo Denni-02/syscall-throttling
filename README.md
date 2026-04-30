@@ -228,12 +228,12 @@ Per validare la scelta architetturale del meccanismo **Read-Copy-Update (RCU)** 
 **Metodologia del Test:** Il primo test ha previsto **20 run** consecutive, in cui **8 thread** hanno generato raffiche da **15.000 chiamate** a vuoto (`getpid`), il tutto con **20 regole attive**.
 
 **Risultati dell'Esperimento:**
-![Box Plot RCU vs Spinlock](plots/heavy_boxplot1.png.png)
+![Box Plot RCU vs Spinlock](plots/heavy_boxplot1.png)
 
 **Metodologia del Test:** Il primo test ha previsto **20 run** consecutive, in cui **20 thread** hanno generato raffiche da **1.000 chiamate** a vuoto (`getpid`), il tutto con **50 regole attive**.
 
 **Risultati dell'Esperimento:**
-![Box Plot RCU vs Spinlock](plots/heavy_boxplot2.png.png)
+![Box Plot RCU vs Spinlock](plots/heavy_boxplot2.png)
 
 **Conclusioni Architetturali:**
 1. **Collasso dello Spinlock:** Sotto un carico modesto, lo Spinlock globale costringe i core ad un'attesa attiva (*busy-waiting*), nel primo test addirittura raddoppiando (+100%) il tempo di attraversamento del Ring 0. Spingendo ulteriormente il parametro di carico durante i test esplorativi, lo Spinlock ha ripetutamente innescato una condizione di *Deadlock*, costringendo a riavviare la VM.
