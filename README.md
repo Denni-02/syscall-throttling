@@ -195,9 +195,9 @@ Il seguente test mostra il costo computazionale dell'intercettore Ring 3 ➔ Rin
 
 ![Distribuzione Overhead](plots/overhead_chart.png)
 
--  Nelle configurazioni basate su **Kprobes**, l'overhead aggiunto dall'hook è trascurabile. *NB*: La latenza è posta a zero nel caso sia negativa solo per questioni grafiche.
+-  In generale l'overhead aggiunto dall'hook è trascurabile. *NB*: La latenza è posta a zero nel caso sia negativa solo per questioni grafiche.
 - Sebbene lo Spinlock mostri tempi di latenza paragonabili (ricordiamo che è un test a thread singolo), l'infrastruttura di produzione adotta **RCU (Read-Copy-Update)** per design. Essendo un ambiente Read-Mostly, RCU permette a un numero illimitato di thread concorrenti di attraversare il Fast-Path simultaneamente in modo *lock-free*. Uno Spinlock globale, al contrario, forzerebbe la serializzazione di tutte le system call su tutti i core CPU, generando un collo di bottiglia (*Lock Contention*) in produzione.
-- L'approccio brute-force dello scanner di memoria introduce una minima penalità architetturale costante (es. +97ns su `getpid`), confermandosi un fallback comunque efficiente per kernel sprovvisti di moduli di debugging abilitati.
+- In alcuni casi viene introdotta una minima penalità architetturale costante (es. +97ns su `getpid`).
 
 ### 7.3 Mitigazione del Thundering Herd (Analisi Context Switches)
 
