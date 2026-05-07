@@ -1,14 +1,23 @@
 # File di build del Kernel
 *.o
+*.out
 *.ko
 *.mod.c
 *.mod
+*.mod.o
 *.symvers
 *.order
 .*.cmd
 .tmp_versions/
 modules.order
 Module.symvers
+
+test/bench_multi_thread
+test/bench_latency
+test/bench_stress
+test/bench_burst
+test/bench_logic
+userspace/cli_tool
 
 # Cartella di configurazione di VS Code
 .vscode/
