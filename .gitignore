@@ -15,8 +15,8 @@ Module.symvers
 test/bench_multi_thread
 test/bench_latency
 test/bench_stress
-test/bench_burst
-test/bench_logic
+test/test_burst
+test/test_logic
 userspace/cli_tool
 
 # Cartella di configurazione di VS Code
