@@ -22,7 +22,6 @@ ax = sns.boxplot(
     showfliers=False 
 )
 
-# Aggiungiamo i punti densità (SENZA legend=False per evitare crash su Ubuntu 22.04)
 sns.stripplot(
     data=df, 
     x='Syscall', 

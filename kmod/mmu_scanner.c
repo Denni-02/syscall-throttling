@@ -157,7 +157,7 @@ static unsigned long validate_page(unsigned long page) {
 }
 
 /**
- * scan_for_syscall_table() - Entry point della libreria (ex syscall_table_finder).
+ * scan_for_syscall_table() - Esegue lo scan della RAM.
  * Attraversa la memoria virtuale e chiama il validatore.
  * Return: L'indirizzo esadecimale, o 0 in caso di fallimento totale.
 */
@@ -171,7 +171,7 @@ unsigned long scan_for_syscall_table(void) {
         // Prima di leggere la pagina, chiediamo all'hardware se esiste fisicamente in RAM 
         if (sys_vtpmo(k) != NO_MAP) {
             
-            // Esiste! Cerchiamo il pattern 
+            // Se esiste, cerchiamo il pattern 
             found_addr = validate_page(k);
             if (found_addr != 0) {
                 return found_addr; // Trovata, interrompiamo la scansione 

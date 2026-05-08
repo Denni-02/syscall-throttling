@@ -55,6 +55,7 @@ static inline unsigned long long read_rdtscp_strict(unsigned int *cpu_id) {
     return ((unsigned long long)hi << 32) | lo;
 }
 
+// Entry point per l'intercettazione.
 void enforce_syscall_policy(int syscall_num) {
     uid_t caller_uid;
     char caller_comm[TASK_COMM_LEN];

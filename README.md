@@ -230,7 +230,7 @@ Per validare la scelta architetturale del meccanismo **Read-Copy-Update (RCU)** 
 **Risultati dell'Esperimento:**
 ![Box Plot RCU vs Spinlock](plots/heavy_boxplot1.png)
 
-**Metodologia del Test:** Il primo test ha previsto **20 run** consecutive, in cui **20 thread** hanno generato raffiche da **1.000 chiamate** a vuoto (`getpid`), il tutto con **50 regole attive**.
+**Metodologia del Test:** Il secondo test ha previsto **20 run** consecutive, in cui **20 thread** hanno generato raffiche da **1.000 chiamate** a vuoto (`getpid`), il tutto con **50 regole attive**.
 
 **Risultati dell'Esperimento:**
 ![Box Plot RCU vs Spinlock](plots/heavy_boxplot2.png)

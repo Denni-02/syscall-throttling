@@ -16,18 +16,18 @@
 
 /**
  * struct throttling_rule - Nodo della lista per le regole
- * @uid:         User ID da monitorare (-1 indica nessun filtro sull'utente)
- * @comm:        Nome del task da limitare (stringa vuota indica nessun filtro)
+ * @uid: User ID da monitorare (-1 indica nessun filtro sull'utente)
+ * @comm: Nome del task da limitare (stringa vuota indica nessun filtro)
  * @syscall_num: Numero della system call bersaglio
- * @max_calls:   Soglia massima di chiamate permesse in 1 secondo
+ * @max_calls: Soglia massima di chiamate permesse in 1 secondo
  * @current_calls: Contatore atomico thread-safe delle invocazioni correnti
- * @peak_delay:  Ritardo massimo registrato (in cicli di clock)
+ * @peak_delay: Ritardo massimo registrato (in cicli di clock)
  * @peak_victim_uid: UID del processo che ha subito il ritardo massimo
  * @peak_victim_comm: Nome del processo che ha subito il ritardo massimo
  * @peak_threads_blocked: Numero di thread bloccati durante il picco di ritardo
  * @cumulative_threads_blocked: Somma totale dei thread bloccati
  * @throttle_events: Numero di eventi di throttling registrati
- * @list:        Struttura kernel standard per l'ancoraggio alla doubly-linked list
+ * @list: Struttura kernel standard per l'ancoraggio alla doubly-linked list
 */
 struct throttling_rule {
     int uid;
@@ -137,6 +137,7 @@ int remove_rule(int syscall_num) {
     return removed ? 0 : -ENOENT;
 }
 
+// Esegue il conteggio e valuta la policy di blocco
 int is_throttled(int uid, const char *comm, int syscall_num, int *out_max_calls) {
     struct throttling_rule *cursor;
     int should_block = 0; // 0 = Lascia passare, 1 = Congela il thread
@@ -306,7 +307,7 @@ int get_rule_stats(int syscall_num, struct stats_payload *out_stats) {
             out_stats->peak_victim_uid = cursor->peak_victim_uid;
             out_stats->peak_threads_blocked = cursor->peak_threads_blocked;
             
-            /* Calcolo della media intera al volo (Safe Math) */
+            // Calcolo della media intera
             if (cursor->throttle_events > 0) {
                 out_stats->average_threads_blocked = (int)(cursor->cumulative_threads_blocked / cursor->throttle_events);
             } else {

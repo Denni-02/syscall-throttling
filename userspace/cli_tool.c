@@ -62,7 +62,6 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // IL SEGRETO E' QUI: abbiamo aggiunto la 'l' nel getopt
     while ((opt = getopt(argc, argv, "s:m:u:p:g:edl")) != -1) {
         switch (opt) {
             case 's': config.syscall_num = atoi(optarg); break;

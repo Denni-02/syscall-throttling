@@ -13,4 +13,4 @@
 */
 unsigned long kprobes_find_syscall_table(void);
 
-#endif // KPROBES_DISCOVERY_H
+#endif

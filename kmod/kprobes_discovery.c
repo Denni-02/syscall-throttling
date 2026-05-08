@@ -1,6 +1,5 @@
 /**
  * Implementazione del metodo Kprobes per la discovery.
- * Progetto: Syscall Throttling LKM
 */
 
 #include <linux/kernel.h>
@@ -56,4 +55,4 @@ unsigned long kprobes_find_syscall_table(void) {
     return table_addr;
 }
 
-#endif /* USE_KPROBES_DISCOVERY */
+#endif

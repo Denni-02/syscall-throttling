@@ -12,9 +12,9 @@
 #define MAX_RULES_EXPORT 50 // Limite massimo di regole esportabili in una query
 
 /**
- * struct config_data - Payload per la configurazione del Reference Monitor
+ * struct config_data - Payload per la configurazione delle regole di throttling
  * @target_uid:  User ID del thread da sottoporre a throttling (-1 per tutti)
- * @comm:        Nome dell'eseguibile (Task Command) da limitare
+ * @comm:        Nome dell'eseguibile da limitare
  * @syscall_num: Numero identificativo della System Call da intercettare
  * @max_calls:   Soglia massima (MAX) di invocazioni consentite al secondo
  * Questa struttura viene passata dal Ring 3 (User Space) al Ring 0 (Kernel Space). 
@@ -34,7 +34,7 @@ struct config_data {
  * @peak_victim_comm:     (OUT) Nome dell'eseguibile che ha subito il ritardo massimo
  * @peak_threads_blocked: (OUT) Numero massimo di thread bloccati simultaneamente
  * @average_threads_blocked: (OUT) Numero medio di thread bloccati simultaneamente
- * Lo User Space compila @syscall_num e la invia al Ring 0. 
+ * Lo User Space inserisce @syscall_num e la invia al Ring 0. 
  * Il Kernel legge il numero, estrae i dati dal database e
  * sovrascrive i campi (OUT) prima di rimandarla al Ring 3.
 */
@@ -50,44 +50,42 @@ struct stats_payload {
 /**
  * struct list_payload - Payload per esportare l'elenco delle regole dal Ring 0
  * @count: Numero di regole attualmente attive
- * @rules: Array che RIUTILIZZA struct config_data per mostrare le regole
+ * @rules: Array di struct config_data per mostrare le regole
 */
 struct list_payload {
     int count;
-    struct config_data rules[MAX_RULES_EXPORT]; /* <- Usiamo la tua! */
+    struct config_data rules[MAX_RULES_EXPORT]; 
 };
 
 /**
- * SET_THROTTLING_RULE - Magic Number per la system call IOCTL
- * Utilizziamo la macro _IOW (Ioctl Out/Write) per codificare:
- * direzione del flusso dati (User -> Kernel);
- * magic number ('T' per Throttling) che identifica il modulo;
- * numero sequenziale del comando (1);
- * dimensione del payload (sizeof(struct config_data)).
+ * SET_THROTTLING_RULE - Magic Number per la configurazione delle regole di throttling
+ * _IOW: Direzione del flusso dati (User -> Kernel);
+ * Magic number ('T' per Throttling) che identifica il modulo;
+ * Numero sequenziale del comando all'interno del modulo(1);
+ * Dimensione del payload (sizeof(struct config_data)).
 */
 #define SET_THROTTLING_RULE _IOW('T', 1, struct config_data)
 
 /**
  * IOCTL_GET_STATS - Magic Number per la lettura delle statistiche
- * Utilizziamo la macro _IOWR (Ioctl Read/Write) per codificare uno scambio 
- * bidirezionale: lo User Space scrive la richiesta specificando la syscall, 
- * il Kernel Space risponde popolando la medesima struttura struct stats_payload.
+ * _IOWR: Flusso bidirezionale (User -> Kernel e Kernel -> User);
+ * Lo User Space scrive la richiesta specificando la syscall, 
+ * Il Kernel Space risponde popolando la medesima struttura struct stats_payload.
 */
 #define IOCTL_GET_STATS _IOWR('T', 2, struct stats_payload)
 
 /**
  * IOCTL_TOGGLE_MONITOR - Magic Number per l'accensione/spegnimento del monitor
- * Utilizziamo la macro _IOW (Ioctl Write) per inviare un semplice intero (1 o 0)
- * dal Ring 3 al Ring 0, permettendo di abilitare o disabilitare globalmente
+ * _IOW: Per inviare invia un intero (1 o 0) al Kernel dal Ring 3 al Ring 0, 
+ * permettendo di abilitare o disabilitare globalmente
  * il motore di policy senza dover scaricare il modulo.
 */
 #define IOCTL_TOGGLE_MONITOR _IOW('T', 3, int)
 
 /**
  * IOCTL_LIST_RULES - Magic Number per ottenere la lista delle regole attive
- * Utilizziamo la macro _IOR (Ioctl Read) in quanto lo User Space 
- * si limita a ricevere (leggere) l'array popolato dal Kernel.
+ * _IOR (Ioctl Read): Lo User Space si limita a ricevere l'array popolato dal Kernel.
 */
 #define IOCTL_LIST_RULES _IOR('T', 4, struct list_payload)
 
-#endif // DEFENDER_API_H
+#endif

@@ -28,7 +28,6 @@ ax = sns.boxplot(
     fliersize=5
 )
 
-# Aggiungiamo i punti esatti sopra i box per far vedere la densità (opzionale ma bellissimo)
 sns.stripplot(
     data=df, 
     x='Syscall_Name', 

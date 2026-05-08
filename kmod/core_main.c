@@ -29,16 +29,18 @@ static int __init core_init(void) {
     int ret;
     printk(KERN_INFO "[Syscall_Throttling] Modulo Caricato con successo.\n");
 
-    ret = init_char_device();
+    // 1. Registra il device nel VFS
+    ret = init_char_device(); 
     if (ret < 0) return ret;
 
+    // 2. Trova la sys_call_table e prepara il Dispatcher Override
     ret = init_interceptor();
     if (ret < 0) {
         cleanup_char_device(); // Rollback di sicurezza se fallisce
         return ret;
     }
 
-    // Avvio del demone di sistema (Kthread) per il throttling
+    // 3. Arma il Kernel Timer e imposta global_monitor_state=1
     ret = start_policy_engine();
     if (ret < 0) {
         // Rollback a cascata
@@ -57,11 +59,11 @@ static int __init core_init(void) {
 */
 static void __exit core_exit(void) {
 
-    stop_policy_engine();
-    cleanup_interceptor();
-    wait_for_zero_wrappers();
-    cleanup_char_device();
-    cleanup_registry();
+    stop_policy_engine(); // Imposta monitor a OFF e sveglia tutti i thread bloccati.
+    cleanup_interceptor(); // Ripristina Dispatcher Override e sys_call_table
+    wait_for_zero_wrappers(); // Aspetta che tutti i thread già dentro il codice del modulo completino
+    cleanup_char_device(); // Deregistra il device
+    cleanup_registry(); // Libera la memoria delle regole
 
     printk(KERN_INFO "[Syscall_Throttling] Modulo Scaricato con successo.\n");
 }

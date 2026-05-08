@@ -34,4 +34,4 @@ int hook_specific_syscall(int syscall_num);
 */
 void unhook_specific_syscall(int syscall_num);
 
-#endif // SYS_INTERCEPTOR_H
+#endif 

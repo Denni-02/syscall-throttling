@@ -55,9 +55,9 @@ void cleanup_registry(void);
 
 /**
  * reset_all_counters() - Azzeramento asincrono per la nuova finestra temporale
- * Viene invocata periodicamente dal demone di sistema (Kthread). Attraversa
- * il database e resetta a zero il contatore atomico `current_calls` di tutte
- * le regole attive, permettendo ai thread di riprendere le invocazioni.
+ * Viene invocata periodicamente. Attraversa il database e resetta a zero 
+ * il contatore atomico `current_calls` di tutte le regole attive, 
+ * permettendo ai thread di riprendere le invocazioni.
 */
 void reset_all_counters(void);
 
@@ -100,4 +100,4 @@ void get_active_rules(struct list_payload *out_list);
 
 void debug_print_rules(void); // Utility di stampa
 
-#endif // REGISTRY_DATA_H
+#endif

@@ -28,7 +28,7 @@ width = 0.25  # Larghezza delle barre
 # ==========================================
 plt.figure(figsize=(10, 6))
 
-# Sostituiamo gli 0 con un valore minimo (es. 1) solo per far apparire un filo visivo nel grafico
+# Sostituiamo gli 0 con un valore minimo (es. 1) o
 rcu_k_over = [val if val > 0 else 1 for val in rcu_kprobes['Overhead_ns']]
 spin_k_over = [val if val > 0 else 1 for val in spin_kprobes['Overhead_ns']]
 rcu_s_over = [val if val > 0 else 1 for val in rcu_scanner['Overhead_ns']]
@@ -69,7 +69,7 @@ plt.axhline(y=200, color='red', linestyle='--', linewidth=2, label='Ideale Teori
 plt.ylabel('Numero di Context Switches', fontsize=12)
 plt.title('Gestione Thundering Herd sotto Stress (20 Thread)', fontsize=14, fontweight='bold')
 plt.xticks(x, x_labels, fontsize=11)
-plt.ylim(0, max(max(rcu_k_cs), max(spin_k_cs)) * 1.5) # Diamo respiro in alto
+plt.ylim(0, max(max(rcu_k_cs), max(spin_k_cs)) * 1.5) 
 plt.legend()
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 

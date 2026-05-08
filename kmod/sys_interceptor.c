@@ -127,7 +127,7 @@ static unsigned long get_syscall_table_address(void) {
     return scan_for_syscall_table();
 }
 
-#endif /* USE_KPROBES_DISCOVERY */
+#endif 
 
 /* ========================================================================= *
  * GESTIONE PROTEZIONI HARDWARE (CR0 & CR4)                                  *
