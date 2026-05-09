@@ -444,6 +444,7 @@ Caricare il modulo e compilare tutti gli eseguibili di test.
 make reload
 gcc -Wall -O3 test/test_logic.c   -o test/test_logic
 gcc -Wall -O3 test/test_burst.c   -o test/test_burst
+gcc -O0       test/test_block.c   -o test/test_block
 gcc -Wall -O3 test/bench_stress.c -o test/bench_stress -pthread
 gcc -Wall -O3 test/bench_multi_thread.c -o test/bench_multi_thread -pthread
 cd userspace && make && cd ..
@@ -481,6 +482,7 @@ Poi azzeriamo le statistiche per i prossimi comandi:
 
 ```bash
 sudo ./userspace/cli_tool -R 39  
+sudo ./userspace/cli_tool -g 39
 ```
 
 
@@ -512,14 +514,22 @@ sudo ./test/test_burst 39
 Dimostrare che il monitor può essere spento a caldo senza lasciare thread bloccati per sempre nel kernel. `test_burst` viene lanciato in background e si blocca nella Wait Queue. L'amministratore invia `IOCTL_TOGGLE_MONITOR` con valore 0: il kernel chiama `flush_all_waiters()` che imposta `granted=true` su ogni `scth_waiter` in coda e chiama `wake_up()` su ciascuna wait queue privata. Il thread si sveglia, vede `global_monitor_state == 0`, esce dal codice del modulo e ritorna al processo.
 
 ```bash
-sudo ./userspace/cli_tool -r 39
-sudo ./userspace/cli_tool -s 39 -m 1
-./test/test_burst 39 &
+# Rimuove eventuali regole precedenti sulla syscall 39 
+sudo ./userspace/cli_tool -r 39 2>/dev/null; true
+# Inserisce una regola MAX=0 filtrata sul comm 'test_burst'
+sudo ./userspace/cli_tool -s 39 -m 0 -p test_burst
+# Lancia test_burst in background, redirezionando stdout su /dev/null
+./test/test_burst 39 > /dev/null &
+BURST_PID=$!
+# Aspetta 0.5s per dare tempo al processo di bloccarsi nella Wait Queue,
+# poi invia IOCTL_TOGGLE_MONITOR=0
 sleep 0.5 && sudo ./userspace/cli_tool -d
-wait && echo "Processo sbloccato"
+# Aspetta che il processo background termini e conferma il successo
+wait $BURST_PID && echo "Processo sbloccato"
+# Riabilita il monitor per i prossimi step
 sudo ./userspace/cli_tool -e
 ```
-> Atteso: il comando `wait` ritorna immediatamente dopo il `-d` — il thread è stato espulso dalla Wait Queue senza Kernel Panic. Su dmesg: `Stato del monitor cambiato: DISATTIVATO`.
+> Atteso in ordine: `[CLI] Motore Globale di Throttling: DISATTIVATO` → `[1]+ Done` → `Processo sbloccato` → monitor riattivato. Il fatto che `Done` appaia dopo il `-d` conferma che il processo era ancora bloccato in Ring 0 quando il monitor è stato spento. Su dmesg: `Stato del monitor cambiato: DISATTIVATO`.
 
 
 ### Step 6 — Safe unloading: rmmod con thread bloccati in Ring 0
@@ -527,10 +537,19 @@ sudo ./userspace/cli_tool -e
 Dimostrare lo scenario di rimozione del modulo dalla RAM mentre ci sono thread attivi dentro il suo codice. Senza la sincronizzazione implementata, i thread si risveglierebbero su memoria non più mappata — Kernel Panic immediato. La sequenza di `core_exit` gestisce questo: `flush_all_waiters()` sveglia tutti i thread, `wait_for_zero_wrappers()` aspetta che `active_wrappers` scenda a zero, solo allora la memoria viene liberata.
 
 ```bash
-sudo ./userspace/cli_tool -r 39
-sudo ./userspace/cli_tool -s 39 -m 5
-./test/bench_stress 39 &
+# Rimuove eventuali regole precedenti sulla syscall 39
+sudo ./userspace/cli_tool -r 39 2>/dev/null; true
+# Inserisce una regola MAX=0 filtrata sul comm 'test_block'
+sudo ./userspace/cli_tool -s 39 -m 0
+# Lancia test_block in background
+./test/test_block &
+BLOCK_PID=$!
+# Aspetta 0.5s per dare tempo al processo di bloccarsi nella Wait Queue,
+# poi scarica il modulo
 sleep 0.5 && make unload
+# Se siamo arrivati qui senza Kernel Panic, il safe unloading ha funzionato
 echo "Nessun Kernel Panic: $(uname -r)"
+# Terminiamo esplicitamente
+kill $BLOCK_PID 2>/dev/null; true
 ```
-> Atteso: `make unload` completa, il sistema risponde al comando successivo, su dmesg la sequenza completa di cleanup. Il sistema operativo sopravvive intatto.
+> Atteso: `make unload` completa, il sistema risponde al comando successivo, su dmesg la sequenza completa di cleanup. La riga `[1]+ Terminated ./test/test_block` appare **dopo** `Nessun Kernel Panic` — prova che il processo era ancora in Ring 0 durante lo scaricamento.
