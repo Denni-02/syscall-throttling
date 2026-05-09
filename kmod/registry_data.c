@@ -329,6 +329,30 @@ int get_rule_stats(int syscall_num, struct stats_payload *out_stats) {
     return found ? 0 : -ENOENT;
 }
 
+// Azzera le statistiche di una regola specifica
+int reset_rule_stats(int syscall_num) {
+    struct throttling_rule *cursor;
+    int found = 0;
+
+    spin_lock(&registry_lock);
+    list_for_each_entry(cursor, &rules_list, list) {
+        if (cursor->syscall_num == syscall_num) {
+            cursor->peak_delay = 0;
+            cursor->peak_victim_uid = -1;
+            cursor->peak_victim_comm[0] = '\0';
+            cursor->peak_threads_blocked = 0;
+            cursor->cumulative_threads_blocked = 0;
+            cursor->throttle_events = 0;
+            atomic_set(&cursor->current_calls, 0);
+            found = 1;
+            break;
+        }
+    }
+    spin_unlock(&registry_lock);
+
+    return found ? 0 : -ENOENT;
+}
+
 // Estrae un'istantanea di tutte le regole attualmente in memoria
 void get_active_rules(struct list_payload *out_list) {
     struct throttling_rule *cursor;

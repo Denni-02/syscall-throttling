@@ -32,6 +32,12 @@ int add_rule(int uid, const char *comm, int syscall_num, int max_calls);
 */
 int remove_rule(int syscall_num);
 
+/*
+ * reset_rule_stats() - Azzera le statistiche
+ * @syscall_num: Numero della system call
+*/
+int reset_rule_stats(int syscall_num);
+
 /**
  * is_throttled() - Esegue il conteggio e valuta la policy di blocco
  * @uid:           UID del processo chiamante (current_uid)

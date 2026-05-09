@@ -19,6 +19,7 @@ static int major_number;
 extern int global_monitor_state;
 extern void set_global_monitor_state(int state);
 extern int get_rule_stats(int syscall_num, struct stats_payload *out_stats);
+extern int reset_rule_stats(int syscall_num);
 
 /**
  * defender_ioctl() - Handler per la system call ioctl() sul character device
@@ -125,6 +126,20 @@ static long defender_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             // Liberiamo la memoria heap prima di tornare al chiamante
             kfree(list_data);
             break;
+        }
+
+        case IOCTL_REMOVE_RULE: {
+            int syscall_num;
+            if (copy_from_user(&syscall_num, (int __user *)arg, sizeof(int)))
+                return -EFAULT;
+            return remove_rule(syscall_num);   
+        }
+
+        case IOCTL_RESET_STATS: {
+            int syscall_num;
+            if (copy_from_user(&syscall_num, (int __user *)arg, sizeof(int)))
+                return -EFAULT;
+            return reset_rule_stats(syscall_num); 
         }
 
         default:

@@ -16,6 +16,7 @@
 8. [Analisi di Scalabilità](#analisi-di-scalabilità)
 9. [Test di Validazione](#test-di-validazione)
 10. [Debugging e Log del Kernel](#debugging-e-log-del-kernel)
+11. [Demo Completa](#demo-completa)
 
 ---
 
@@ -420,3 +421,116 @@ Per leggere le ultime attività registrate:
 ```bash
 sudo dmesg | tail -n 30
 ```
+
+---
+## 11. Demo Completa
+
+Sequenza completa per mostrare tutte le funzionalità del sistema.
+Aprire due terminali affiancati: **Terminal A** per i comandi, **Terminal B** per i log kernel in tempo reale.
+
+**Terminal B** — lasciare aperto per tutta la demo:
+```bash
+sudo dmesg -wH | grep --color=always Syscall_Throttling
+```
+> Il Terminal B mostra in tempo reale i `printk` del modulo: discovery della tabella, installazione degli hook fisici, cambi di stato. È la prova visiva che il codice in Ring 0 sta girando.
+
+**Terminal A** — eseguire la seguente sequenza di comandi
+
+### Setup iniziale (una volta sola)
+
+Caricare il modulo e compilare tutti gli eseguibili di test. 
+
+```bash
+make reload
+gcc -Wall -O3 test/test_logic.c   -o test/test_logic
+gcc -Wall -O3 test/test_burst.c   -o test/test_burst
+gcc -Wall -O3 test/bench_stress.c -o test/bench_stress -pthread
+gcc -Wall -O3 test/bench_multi_thread.c -o test/bench_multi_thread -pthread
+cd userspace && make && cd ..
+```
+
+### Step 1 — Inserimento regola e visualizzazione database
+
+```bash
+sudo ./userspace/cli_tool -s 39 -m 3 -p test_logic
+sudo ./userspace/cli_tool -l
+```
+> Atteso: tabella con una riga — syscall 39, MAX 3, UID -1 (tutti), programma `test_logic`. Su dmesg: `Hook FISICO installato sulla Syscall 39`.
+
+
+### Step 2 — Test logica temporale
+
+Dimostrare che la finestra temporale di 1 secondo funziona correttamente. Il programma esegue 2 chiamate sotto soglia, aspetta 1.5 secondi (abbastanza perché il Kernel Timer HZ scatti e `reset_all_counters()` azzeri i contatori in SoftIRQ), poi esegue 4 chiamate in rapida successione. Le prime 3 passano nel fast-path, la 4a supera MAX=3 e viene sospesa nella Wait Queue fino al tick successivo.
+
+```bash
+./test/test_logic
+```
+> Atteso: chiamate 1-2 FAST-PATH (fase 1), poi dopo la pausa chiamate 1-3 FAST-PATH e chiamata 4 THROTTLING con ~XXXms di ritardo.
+
+
+### Step 3 — Statistiche 
+
+ Dopo gli eventi di throttling generati nello step precedente, il kernel ha registrato il picco di ritardo in cicli TSC (misurati con l'istruzione assembly `rdtscp` direttamente sull'hardware), l'identità del processo vittima e le statistiche sui thread bloccati. .
+
+```bash
+sudo ./userspace/cli_tool -g 39
+```
+> Atteso: peak delay max ~3.4 miliardi di cicli (≈ 1 secondo a 3.4GHz), vittima UID 1000 / processo `test_logic`, picco e media thread bloccati = 1.
+
+Poi azzeriamo le statistiche per i prossimi comandi:
+
+```bash
+sudo ./userspace/cli_tool -R 39  
+```
+
+
+### Step 4 — Test isolamento UID 
+
+Dimostrare che l'hook in Ring 0 legge le credenziali reali del processo chiamante tramite `current_euid()` e applica il filtro per UID. Una regola MAX=0 su `nobody` blocca totalmente quell'utente, ma root (UID 0) non corrisponde al filtro e bypassa il throttling. La sicurezza è lato kernel.
+
+```bash
+sudo ./userspace/cli_tool -r 39
+sudo ./userspace/cli_tool -s 39 -m 0 -u $(id -u nobody)
+sudo ./userspace/cli_tool -l
+```
+
+**Scenario 1 — nobody si congela in Ring 0:**
+```bash
+sudo -u nobody timeout 2s ./test/test_burst 39; echo "Exit: $?"
+```
+> Atteso: nessuna delle 100 righe del ciclo for viene stampata — il processo è bloccato prima della prima iterazione. Il timeout scatta dopo 2 secondi e ritorna `Exit: 124`.
+
+**Scenario 2 — root bypassa il filtro UID:**
+```bash
+sudo ./test/test_burst 39
+```
+> Atteso: tutte le 100 chiamate elaborate istantaneamente — root ha UID 0, non corrisponde al filtro 65534, passa direttamente nel fast-path.
+
+
+### Step 5 — Disattivazione monitor con thread bloccato in Ring 0
+
+Dimostrare che il monitor può essere spento a caldo senza lasciare thread bloccati per sempre nel kernel. `test_burst` viene lanciato in background e si blocca nella Wait Queue. L'amministratore invia `IOCTL_TOGGLE_MONITOR` con valore 0: il kernel chiama `flush_all_waiters()` che imposta `granted=true` su ogni `scth_waiter` in coda e chiama `wake_up()` su ciascuna wait queue privata. Il thread si sveglia, vede `global_monitor_state == 0`, esce dal codice del modulo e ritorna al processo.
+
+```bash
+sudo ./userspace/cli_tool -r 39
+sudo ./userspace/cli_tool -s 39 -m 1
+./test/test_burst 39 &
+sleep 0.5 && sudo ./userspace/cli_tool -d
+wait && echo "Processo sbloccato"
+sudo ./userspace/cli_tool -e
+```
+> Atteso: il comando `wait` ritorna immediatamente dopo il `-d` — il thread è stato espulso dalla Wait Queue senza Kernel Panic. Su dmesg: `Stato del monitor cambiato: DISATTIVATO`.
+
+
+### Step 6 — Safe unloading: rmmod con thread bloccati in Ring 0
+
+Dimostrare lo scenario di rimozione del modulo dalla RAM mentre ci sono thread attivi dentro il suo codice. Senza la sincronizzazione implementata, i thread si risveglierebbero su memoria non più mappata — Kernel Panic immediato. La sequenza di `core_exit` gestisce questo: `flush_all_waiters()` sveglia tutti i thread, `wait_for_zero_wrappers()` aspetta che `active_wrappers` scenda a zero, solo allora la memoria viene liberata.
+
+```bash
+sudo ./userspace/cli_tool -r 39
+sudo ./userspace/cli_tool -s 39 -m 5
+./test/bench_stress 39 &
+sleep 0.5 && make unload
+echo "Nessun Kernel Panic: $(uname -r)"
+```
+> Atteso: `make unload` completa, il sistema risponde al comando successivo, su dmesg la sequenza completa di cleanup. Il sistema operativo sopravvive intatto.

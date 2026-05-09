@@ -88,4 +88,10 @@ struct list_payload {
 */
 #define IOCTL_LIST_RULES _IOR('T', 4, struct list_payload)
 
+/* Magic Numbers per la rimozione di una regola specifica e per il reset delle statistiche.
+   Entrambi utilizzano _IOW perché richiedono un input (ID della regola o syscall) dal Ring 3 al Ring 0.
+*/
+#define IOCTL_REMOVE_RULE  _IOW('T', 5, int)
+#define IOCTL_RESET_STATS  _IOW('T', 6, int)
+
 #endif

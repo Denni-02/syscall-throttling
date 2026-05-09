@@ -25,6 +25,10 @@ void print_usage(const char *prog_name) {
     printf("   %s -d  (Disabilita)\n", prog_name);
     printf("4. Mostra Regole Attive:\n");
     printf("   %s -l\n\n", prog_name);
+    printf("5. Rimuovi regola:\n");
+    printf("   %s -r <syscall_num>\n", prog_name);
+    printf("6. Azzera statistiche:\n");
+    printf("   %s -R <syscall_num>\n\n", prog_name);
 }
 
 void print_stats_report(struct stats_payload *stats) {
@@ -51,6 +55,8 @@ int main(int argc, char *argv[]) {
     int get_stats_syscall = -1;
     int toggle_monitor = -1; 
     int list_rules = 0;
+    int remove_rule_syscall = -1;
+    int reset_stats_syscall = -1;
 
     config.target_uid = -1;
     config.syscall_num = -1;
@@ -62,7 +68,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    while ((opt = getopt(argc, argv, "s:m:u:p:g:edl")) != -1) {
+    while ((opt = getopt(argc, argv, "s:m:u:p:g:edlr:R:")) != -1) {
         switch (opt) {
             case 's': config.syscall_num = atoi(optarg); break;
             case 'm': config.max_calls = atoi(optarg); break;
@@ -72,6 +78,8 @@ int main(int argc, char *argv[]) {
             case 'e': toggle_monitor = 1; break;
             case 'd': toggle_monitor = 0; break;
             case 'l': list_rules = 1; break; // GESTIONE DEL FLAG -l
+            case 'r': remove_rule_syscall = atoi(optarg); break;
+            case 'R': reset_stats_syscall = atoi(optarg); break;
             default:
                 print_usage(argv[0]);
                 return EXIT_FAILURE;
@@ -108,7 +116,7 @@ int main(int argc, char *argv[]) {
         close(fd); return EXIT_SUCCESS;
     }
 
-    /* --- AZIONE D: LISTA REGOLE ATTIVE --- */
+    /* --- AZIONE C: LISTA REGOLE ATTIVE --- */
     if (list_rules) {
         struct list_payload list_data;
         
@@ -139,7 +147,27 @@ int main(int argc, char *argv[]) {
         close(fd); return EXIT_SUCCESS;
     }
 
-    /* --- AZIONE C: INSERISCI REGOLA --- */
+    /* --- AZIONE D: RIMUOVI REGOLA --- */
+    if (remove_rule_syscall != -1) {
+        if (ioctl(fd, IOCTL_REMOVE_RULE, &remove_rule_syscall) < 0) {
+            perror("[!] Errore IOCTL_REMOVE_RULE (regola non trovata?)");
+            close(fd); return EXIT_FAILURE;
+        }
+        printf("[CLI] Regola per syscall %d rimossa.\n", remove_rule_syscall);
+        close(fd); return EXIT_SUCCESS;
+    }
+
+    /* --- AZIONE E: RESET STATISTICHE --- */
+    if (reset_stats_syscall != -1) {
+        if (ioctl(fd, IOCTL_RESET_STATS, &reset_stats_syscall) < 0) {
+            perror("[!] Errore IOCTL_RESET_STATS (regola non trovata?)");
+            close(fd); return EXIT_FAILURE;
+        }
+        printf("[CLI] Statistiche per syscall %d azzerate.\n", reset_stats_syscall);
+        close(fd); return EXIT_SUCCESS;
+    }
+
+    /* --- AZIONE F: INSERISCI REGOLA --- */
     if (config.syscall_num == -1 || config.max_calls == -1) {
         printf("[!] Errore: Per aggiungere una regola servono -s e -m.\n");
         close(fd); return EXIT_FAILURE;
