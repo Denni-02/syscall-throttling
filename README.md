@@ -120,18 +120,19 @@ Per compilare il pannello di controllo utente si usa la seguente sequenza di com
 ```bash
 cd userspace
 make
+cd ..
 ```
 **1. Inserimento Regole di Throttling**
 La sintassi del comando richiede privilegi di root e accetta parametri dinamici tramite flag:
 
 ```bash
-sudo ./cli_tool -s <syscall_num> -m <max_calls> [-u <uid>] [-p <program>]
+sudo ./userspace/cli_tool -s <syscall_num> -m <max_calls> [-u <uid>] [-p <program>]
 ```
 
 **Esempio:** Limitare la system call 2 (sys_open) a un massimo di 10 chiamate al secondo per l'utente con UID 1000:
 
 ```bash
-sudo ./cli_tool -s 2 -m 10 -u 1000
+sudo ./userspace/cli_tool -s 2 -m 10 -u 1000
 ```
 
 **2. Estrazione Statistiche** 
@@ -140,7 +141,7 @@ Il modulo tiene traccia delle tempistiche di sospensione dei processi calcolando
 Per estrarre il report statistico di una regola:
 
 ```bash
-sudo ./cli_tool -g <syscall_num>
+sudo ./userspace/cli_tool -g <syscall_num>
 ```
 
 L'output mostrerà il picco di ritardo (in cicli di clock), l'identificativo della vittima (UID e Programma) e il numero massimo e medio di thread bloccati simultaneamente per quella syscall.
@@ -149,17 +150,23 @@ L'output mostrerà il picco di ritardo (in cicli di clock), l'identificativo del
 Il tool permette di interrogare in tempo reale il database in Ring 0 (tramite un'allocazione sicura sull'heap del kernel) per ottenere una tabella delle policy attualmente attive:
 
 ```bash
-sudo ./cli_tool -l
+sudo ./userspace/cli_tool -l
 ```
 
 **4. Interruttore Globale**
 È possibile bypassare istantaneamente le regole di throttling senza dover disinstallare il modulo o cancellare le regole dalla RAM:
 
 ```bash
-sudo ./cli_tool -d  # Disabilita il monitor
-sudo ./cli_tool -e  # Riabilita il monitor
+sudo ./userspace/cli_tool -d  # Disabilita il monitor
+sudo ./userspace/cli_tool -e  # Riabilita il monitor
 ```
 
+**5. Pulizia**
+
+```bash
+sudo ./userspace/cli_tool -r <syscall_num>  # Elimina regola
+sudo ./userspace/cli_tool -R <syscall_num>  # Elimina statistiche
+```
 ---
 
 ## 7. Analisi delle Prestazioni (Benchmark)
